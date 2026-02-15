@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presupuesto Familiar 2026 - Aner e Iratxe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #1a202c;
+            margin-bottom: 4px;
+        }
+
+        .header-subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .balance-display {
+            text-align: right;
+        }
+
+        .balance-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+
+        .balance-amount {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .balance-positive {
+            color: #48bb78;
+        }
+
+        .balance-negative {
+            color: #f56565;
+        }
+
+        /* Month Selector */
+        .month-selector {
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .month-buttons {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+
+        .month-btn {
+            padding: 10px 16px;
+            border: 2px solid #e2e8f0;
+            background: #f7fafc;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            color: #4a5568;
+        }
+
+        .month-btn:hover {
+            background: #edf2f7;
+            transform: translateY(-2px);
+        }
+
+        .month-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* Tabs */
+        .tabs-container {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .tabs-header {
+            display: flex;
+            border-bottom: 2px solid #e2e8f0;
+            overflow-x: auto;
+            background: #f7fafc;
+        }
+
+        .tab-btn {
+            padding: 16px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #718096;
+            white-space: nowrap;
+            transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn:hover {
+            color: #4a5568;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1a202c;
+            margin-bottom: 16px;
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-secondary {
+            background: #cbd5e0;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #a0aec0;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Semana Card */
+        .semana-card {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+
+        .semana-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .semana-card.cruza {
+            border-color: #f6ad55;
+            background: #fffaf0;
+        }
+
+        .semana-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .semana-title {
+            font-weight: bold;
+            color: #2d3748;
+            font-size: 16px;
+        }
+
+        .semana-dates {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 2px;
+        }
+
+        .semana-stats {
+            margin-bottom: 12px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: #718096;
+        }
+
+        .stat-value {
+            font-weight: 600;
+        }
+
+        .stat-value.red {
+            color: #f56565;
+        }
+
+        .stat-value.green {
+            color: #48bb78;
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s, background 0.3s;
+        }
+
+        .progress-green { background: #48bb78; }
+        .progress-yellow { background: #f6ad55; }
+        .progress-red { background: #f56565; }
+
+        /* Gasto Item */
+        .gasto-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .gasto-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .gasto-concepto {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .gasto-importe {
+            font-weight: 600;
+            margin: 0 8px;
+        }
+
+        .gasto-delete {
+            background: none;
+            border: none;
+            color: #f56565;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 4px;
+        }
+
+        .gasto-delete:hover {
+            color: #e53e3e;
+        }
+
+        /* Input Group */
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* Alert */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-top: 16px;
+            border-left: 4px solid;
+            font-size: 14px;
+        }
+
+        .alert-warning {
+            background: #fffaf0;
+            border-color: #f6ad55;
+            color: #744210;
+        }
+
+        .alert-info {
+            background: #ebf8ff;
+            border-color: #4299e1;
+            color: #2c5282;
+        }
+
+        /* Summary Boxes */
+        .summary-box {
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .summary-box.income {
+            background: #f0fff4;
+            border-color: #9ae6b4;
+        }
+
+        .summary-box.expense {
+            background: #fff5f5;
+            border-color: #fc8181;
+        }
+
+        .summary-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .summary-title.income {
+            color: #22543d;
+        }
+
+        .summary-title.expense {
+            color: #742a2a;
+        }
+
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .summary-total {
+            display: flex;
+            justify-content: space-between;
+            border-top: 2px solid;
+            padding-top: 8px;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        .summary-box.income .summary-total {
+            border-color: #9ae6b4;
+            color: #22543d;
+        }
+
+        .summary-box.expense .summary-total {
+            border-color: #fc8181;
+            color: #742a2a;
+        }
+
+        /* Balance Banner */
+        .balance-banner {
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .balance-banner.positive {
+            background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+        }
+
+        .balance-banner.negative {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+        }
+
+        .balance-banner-label {
+            font-size: 14px;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .balance-banner-amount {
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        .balance-banner.positive .balance-banner-amount {
+            color: #22543d;
+        }
+
+        .balance-banner.negative .balance-banner-amount {
+            color: #742a2a;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        tr.current-month {
+            background: #ebf8ff;
+        }
+
+        /* Projection */
+        .projection-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 32px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+        }
+
+        .projection-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .projection-subtitle {
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+
+        .projection-amount-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+
+        .projection-amount {
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        .projection-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: #f7fafc;
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+
+        /* Fijo Item */
+        .fijo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f7fafc;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+
+        .fijo-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .fijo-item.inactive {
+            opacity: 0.5;
+            background: #e2e8f0;
+        }
+
+        .fijo-concepto {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .fijo-concepto.inactive {
+            text-decoration: line-through;
+        }
+
+        .fijo-importe {
+            color: #f56565;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+
+        .fijo-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        /* Form */
+        .form-container {
+            background: #ebf8ff;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            border: 2px solid #4299e1;
+        }
+
+        .form-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #2c5282;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 8px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .balance-amount {
+                font-size: 24px;
+            }
+
+            .card {
+                padding: 16px;
+            }
+
+            .card-title {
+                font-size: 18px;
+            }
+
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+
+            .tab-btn {
+                padding: 12px 16px;
+                font-size: 13px;
+            }
+
+            .projection-title {
+                font-size: 20px;
+            }
+
+            .projection-amount {
+                font-size: 28px;
+            }
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div>
+                    <h1>💰 Presupuesto Familiar 2026</h1>
+                    <div class="header-subtitle">Aner e Iratxe - Gestión Financiera</div>
+                </div>
+                <div class="balance-display">
+                    <div class="balance-label">Balance <span id="mes-actual-nombre">Febrero</span></div>
+                    <div id="balance-header" class="balance-amount balance-positive">€0.00</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                <button class="btn btn-success btn-sm" onclick="exportarDatos()">
+                    <span>💾</span> Exportar Datos
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="importarDatos()">
+                    <span>📥</span> Importar Datos
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="resetearDatos()">
+                    <span>🗑️</span> Resetear Todo
+                </button>
+            </div>
+        </div>
+
+        <!-- Month Selector -->
+        <div class="month-selector">
+            <div class="month-buttons" id="month-selector"></div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-container">
+            <div class="tabs-header">
+                <button class="tab-btn active" data-tab="resumen">📊 Resumen</button>
+                <button class="tab-btn" data-tab="semanas">🏪 Semanal</button>
+                <button class="tab-btn" data-tab="fijos">📝 Fijos</button>
+                <button class="tab-btn" data-tab="puntuales">🎯 Puntuales</button>
+                <button class="tab-btn" data-tab="proyeccion">🚀 Proyección</button>
+            </div>
+
+            <!-- Tab Resumen -->
+            <div class="tab-content active" data-tab-content="resumen">
+                <div class="card-title">Resumen <span id="mes-resumen"></span> 2026</div>
+                <div id="resumen-content"></div>
+            </div>
+
+            <!-- Tab Semanal -->
+            <div class="tab-content" data-tab-content="semanas">
+                <div class="card-title">Presupuesto Semanal - <span id="mes-semanal"></span> 2026</div>
+                <div id="semanas-grid" class="grid grid-3"></div>
+                <div id="semanas-alert"></div>
+            </div>
+
+            <!-- Tab Fijos -->
+            <div class="tab-content" data-tab-content="fijos">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div class="card-title" style="margin: 0;">Gastos Fijos Mensuales</div>
+                        <div class="header-subtitle">Total activos: €<span id="total-fijos">0.00</span>/mes</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="mostrarFormNuevoFijo()">
+                        <span>➕</span> Nuevo Gasto Fijo
+                    </button>
+                </div>
+                
+                <div id="form-nuevo-fijo" class="form-container hidden">
+                    <div class="form-title">Añadir Gasto Fijo</div>
+                    <div class="grid grid-2">
+                        <div class="input-group">
+                            <label class="input-label">Concepto</label>
+                            <input type="text" id="nuevo-fijo-concepto" class="input-field" placeholder="Ej: Netflix">
+                        </div>
+                        <div class="input-group">
+                            <label class="input-label">Importe (€)</label>
+                            <input type="number" step="0.01" id="nuevo-fijo-importe" class="input-field" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" onclick="guardarNuevoFijo()">
+                            <span>💾</span> Guardar
+                        </button>
+                        <button class="btn btn-secondary" onclick="cancelarNuevoFijo()">
+                            <span>✖</span> Cancelar
+                        </button>
+                    </div>
+                </div>
+
+                <div id="lista-fijos"></div>
+            </div>
+
+            <!-- Tab Puntuales -->
+            <div class="tab-content" data-tab-content="puntuales">
+                <div class="card-title">Gastos e Ingresos Puntuales - <span id="mes-puntuales"></span> 2026</div>
+                <div class="grid grid-2">
+                    <div class="summary-box income">
+                        <div class="summary-title income">💰 Ingresos Puntuales</div>
+                        <button class="btn btn-success" style="width: 100%; margin-bottom: 12px;" onclick="agregarIngresoPuntual()">
+                            <span>➕</span> Añadir Ingreso
+                        </button>
+                        <div id="lista-ingresos-puntuales"></div>
+                    </div>
+
+                    <div class="summary-box expense">
+                        <div class="summary-title expense">💸 Gastos Puntuales</div>
+                        <button class="btn btn-danger" style="width: 100%; margin-bottom: 12px;" onclick="agregarGastoPuntual()">
+                            <span>➕</span> Añadir Gasto
+                        </button>
+                        <div id="lista-gastos-puntuales"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Proyección -->
+            <div class="tab-content" data-tab-content="proyeccion">
+                <div class="projection-banner">
+                    <div class="projection-title">🚀 Tu Futuro Financiero</div>
+                    <div class="projection-subtitle">Proyección hasta diciembre 2026</div>
+                    <div class="projection-amount-label">Saldo proyectado fin de año</div>
+                    <div id="saldo-proyectado" class="projection-amount">€0</div>
+                </div>
+                <div class="card-title">Proyección Mes a Mes</div>
+                <div id="proyeccion-meses"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== CONSTANTES ==========
+        const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        
+        const CALENDARIO_2026 = {
+            1: [{numero:1,inicio:'29/12',fin:'04/01',cruza:true},{numero:2,inicio:'05/01',fin:'11/01'},{numero:3,inicio:'12/01',fin:'18/01'},{numero:4,inicio:'19/01',fin:'25/01'},{numero:5,inicio:'26/01',fin:'01/02',cruza:true}],
+            2: [{numero:1,inicio:'26/01',fin:'01/02',cruza:true},{numero:2,inicio:'02/02',fin:'08/02'},{numero:3,inicio:'09/02',fin:'15/02'},{numero:4,inicio:'16/02',fin:'22/02'},{numero:5,inicio:'23/02',fin:'01/03',cruza:true}],
+            3: [{numero:1,inicio:'23/02',fin:'01/03',cruza:true},{numero:2,inicio:'02/03',fin:'08/03'},{numero:3,inicio:'09/03',fin:'15/03'},{numero:4,inicio:'16/03',fin:'22/03'},{numero:5,inicio:'23/03',fin:'29/03'},{numero:6,inicio:'30/03',fin:'05/04',cruza:true}],
+            4: [{numero:1,inicio:'30/03',fin:'05/04',cruza:true},{numero:2,inicio:'06/04',fin:'12/04'},{numero:3,inicio:'13/04',fin:'19/04'},{numero:4,inicio:'20/04',fin:'26/04'},{numero:5,inicio:'27/04',fin:'03/05',cruza:true}],
+            5: [{numero:1,inicio:'27/04',fin:'03/05',cruza:true},{numero:2,inicio:'04/05',fin:'10/05'},{numero:3,inicio:'11/05',fin:'17/05'},{numero:4,inicio:'18/05',fin:'24/05'},{numero:5,inicio:'25/05',fin:'31/05'}],
+            6: [{numero:1,inicio:'01/06',fin:'07/06'},{numero:2,inicio:'08/06',fin:'14/06'},{numero:3,inicio:'15/06',fin:'21/06'},{numero:4,inicio:'22/06',fin:'28/06'},{numero:5,inicio:'29/06',fin:'05/07',cruza:true}],
+            7: [{numero:1,inicio:'29/06',fin:'05/07',cruza:true},{numero:2,inicio:'06/07',fin:'12/07'},{numero:3,inicio:'13/07',fin:'19/07'},{numero:4,inicio:'20/07',fin:'26/07'},{numero:5,inicio:'27/07',fin:'02/08',cruza:true}],
+            8: [{numero:1,inicio:'27/07',fin:'02/08',cruza:true},{numero:2,inicio:'03/08',fin:'09/08'},{numero:3,inicio:'10/08',fin:'16/08'},{numero:4,inicio:'17/08',fin:'23/08'},{numero:5,inicio:'24/08',fin:'30/08'},{numero:6,inicio:'31/08',fin:'06/09',cruza:true}],
+            9: [{numero:1,inicio:'31/08',fin:'06/09',cruza:true},{numero:2,inicio:'07/09',fin:'13/09'},{numero:3,inicio:'14/09',fin:'20/09'},{numero:4,inicio:'21/09',fin:'27/09'},{numero:5,inicio:'28/09',fin:'04/10',cruza:true}],
+            10: [{numero:1,inicio:'28/09',fin:'04/10',cruza:true},{numero:2,inicio:'05/10',fin:'11/10'},{numero:3,inicio:'12/10',fin:'18/10'},{numero:4,inicio:'19/10',fin:'25/10'},{numero:5,inicio:'26/10',fin:'01/11',cruza:true}],
+            11: [{numero:1,inicio:'26/10',fin:'01/11',cruza:true},{numero:2,inicio:'02/11',fin:'08/11'},{numero:3,inicio:'09/11',fin:'15/11'},{numero:4,inicio:'16/11',fin:'22/11'},{numero:5,inicio:'23/11',fin:'29/11'},{numero:6,inicio:'30/11',fin:'06/12',cruza:true}],
+            12: [{numero:1,inicio:'30/11',fin:'06/12',cruza:true},{numero:2,inicio:'07/12',fin:'13/12'},{numero:3,inicio:'14/12',fin:'20/12'},{numero:4,inicio:'21/12',fin:'27/12'},{numero:5,inicio:'28/12',fin:'03/01',cruza:true}]
+        };
+
+        // ========== DATOS ==========
+        let mesActual = 2; // Febrero
+
+        let datos = {
+            ingresosFijos: { aner: 1614.98, iratxe: 2831.71 },
+            gastosFijos: [
+                {id:1,concepto:'Hipoteca',importe:640.51,activo:true},
+                {id:2,concepto:'Impuestos coche',importe:23.55,activo:true},
+                {id:3,concepto:'Impuestos casa',importe:17.40,activo:true},
+                {id:4,concepto:'ONG',importe:15.00,activo:true},
+                {id:5,concepto:'Comunidad',importe:100.00,activo:true},
+                {id:6,concepto:'Metro Iratxe',importe:20.40,activo:true},
+                {id:7,concepto:'Metro Aner',importe:20.40,activo:true},
+                {id:8,concepto:'Plan de pensiones',importe:318.27,activo:true},
+                {id:9,concepto:'Crédito',importe:272.20,activo:true},
+                {id:10,concepto:'Crédito2',importe:19.47,activo:true},
+                {id:11,concepto:'Muebles',importe:190.00,activo:true},
+                {id:12,concepto:'IMQ',importe:256.35,activo:true},
+                {id:13,concepto:'IMQ niñas',importe:73.60,activo:true},
+                {id:14,concepto:'Accidentes',importe:6.13,activo:true},
+                {id:15,concepto:'Decesos',importe:17.05,activo:true},
+                {id:16,concepto:'Poli',importe:59.05,activo:true},
+                {id:17,concepto:'Seguro veterinario',importe:32.97,activo:true},
+                {id:18,concepto:'Comida cook',importe:45.68,activo:true},
+                {id:19,concepto:'Ordenador',importe:40.26,activo:true},
+                {id:20,concepto:'Psicólogo',importe:100.00,activo:true},
+                {id:21,concepto:'Cama',importe:35.00,activo:true},
+                {id:22,concepto:'Lavavajillas',importe:50.75,activo:true},
+                {id:23,concepto:'Skyshowtime',importe:4.99,activo:true},
+                {id:24,concepto:'HBO',importe:5.49,activo:true},
+                {id:25,concepto:'Netflix',importe:13.99,activo:true},
+                {id:26,concepto:'Spotify',importe:10.99,activo:true}
+            ],
+            presupuestosSemana: {},
+            gastosSemanales: {},
+            ingresosPuntuales: {},
+            gastosPuntuales: {}
+        };
+
+        // ========== FUNCIONES DE ALMACENAMIENTO ==========
+        function cargarDatos() {
+            try {
+                const guardado = localStorage.getItem('presupuesto-familiar-2026');
+                if (guardado) {
+                    datos = JSON.parse(guardado);
+                }
+            } catch (error) {
+                console.error('Error al cargar datos:', error);
+            }
+        }
+
+        function guardarDatos() {
+            try {
+                localStorage.setItem('presupuesto-familiar-2026', JSON.stringify(datos));
+            } catch (error) {
+                console.error('Error al guardar datos:', error);
+            }
+        }
+
+        // ========== FUNCIONES DE CÁLCULO ==========
+        function calcularTotalesMes(mes) {
+            const ingresosFijos = datos.ingresosFijos.aner + datos.ingresosFijos.iratxe;
+            const ingresosPuntuales = (datos.ingresosPuntuales[mes] || []).reduce((sum, i) => sum + i.importe, 0);
+            const totalIngresos = ingresosFijos + ingresosPuntuales;
+
+            const gastosFijos = datos.gastosFijos.filter(g => g.activo).reduce((sum, g) => sum + g.importe, 0);
+            const gastosPuntuales = (datos.gastosPuntuales[mes] || []).reduce((sum, g) => sum + g.importe, 0);
+            
+            let gastosSemanales = 0;
+            const semanas = CALENDARIO_2026[mes] || [];
+            semanas.forEach(sem => {
+                const key = `${mes}-${sem.numero}`;
+                gastosSemanales += (datos.gastosSemanales[key] || []).reduce((sum, g) => sum + g.importe, 0);
+            });
+
+            const totalGastos = gastosFijos + gastosPuntuales + gastosSemanales;
+            const balance = totalIngresos - totalGastos;
+
+            return {
+                ingresosFijos,
+                ingresosPuntuales,
+                totalIngresos,
+                gastosFijos,
+                gastosPuntuales,
+                gastosSemanales,
+                totalGastos,
+                balance
+            };
+        }
+
+        // ========== FUNCIONES DE NAVEGACIÓN ==========
+        function cambiarMes(mes) {
+            mesActual = mes;
+            actualizarTodo();
+        }
+
+        function cambiarTab(tabName) {
+            // Actualizar botones
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Actualizar contenido
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelector(`[data-tab-content="${tabName}"]`).classList.add('active');
+
+            actualizarTodo();
+        }
+
+        // ========== FUNCIONES DE RENDERIZADO ==========
+        function renderMonthSelector() {
+            const html = MESES.map((mes, idx) => `
+                <button class="month-btn ${mesActual === idx + 1 ? 'active' : ''}" onclick="cambiarMes(${idx + 1})">
+                    ${mes}
+                </button>
+            `).join('');
+            document.getElementById('month-selector').innerHTML = html;
+        }
+
+        function renderResumen() {
+            const totales = calcularTotalesMes(mesActual);
+
+            const html = `
+                <div class="grid grid-2">
+                    <div class="summary-box income">
+                        <div class="summary-title income">💰 INGRESOS</div>
+                        <div class="summary-item">
+                            <span>Nómina Aner:</span>
+                            <strong>€${datos.ingresosFijos.aner.toFixed(2)}</strong>
+                        </div>
+                        <div class="summary-item">
+                            <span>Nómina Iratxe:</span>
+                            <strong>€${datos.ingresosFijos.iratxe.toFixed(2)}</strong>
+                        </div>
+                        <div class="summary-item" style="font-size: 13px; color: #718096;">
+                            <span>Puntuales:</span>
+                            <span>€${totales.ingresosPuntuales.toFixed(2)}</span>
+                        </div>
+                        <div class="summary-total">
+                            <span>TOTAL:</span>
+                            <span style="font-size: 18px;">€${totales.totalIngresos.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <div class="summary-box expense">
+                        <div class="summary-title expense">💸 GASTOS</div>
+                        <div class="summary-item">
+                            <span>Fijos:</span>
+                            <strong>€${totales.gastosFijos.toFixed(2)}</strong>
+                        </div>
+                        <div class="summary-item">
+                            <span>Semanales:</span>
+                            <strong>€${totales.gastosSemanales.toFixed(2)}</strong>
+                        </div>
+                        <div class="summary-item" style="font-size: 13px; color: #718096;">
+                            <span>Puntuales:</span>
+                            <span>€${totales.gastosPuntuales.toFixed(2)}</span>
+                        </div>
+                        <div class="summary-total">
+                            <span>TOTAL:</span>
+                            <span style="font-size: 18px;">€${totales.totalGastos.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="balance-banner ${totales.balance >= 0 ? 'positive' : 'negative'}">
+                    <div>
+                        <div class="balance-banner-label">Balance del Mes</div>
+                        <div class="balance-banner-amount">
+                            ${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(2)}
+                        </div>
+                    </div>
+                    <div style="font-size: 48px; opacity: 0.3;">
+                        ${totales.balance >= 0 ? '🎉' : '⚠️'}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('resumen-content').innerHTML = html;
+        }
+
+        function renderSemanal() {
+            const semanas = CALENDARIO_2026[mesActual] || [];
+            
+            const html = semanas.map(sem => {
+                const key = `${mesActual}-${sem.numero}`;
+                const presupuesto = datos.presupuestosSemana[key] || 300;
+                const gastos = datos.gastosSemanales[key] || [];
+                const gastado = gastos.reduce((sum, g) => sum + g.importe, 0);
+                const restante = presupuesto - gastado;
+                const porcentaje = (gastado / presupuesto) * 100;
+
+                let progressClass = 'progress-green';
+                if (porcentaje > 100) progressClass = 'progress-red';
+                else if (porcentaje > 80) progressClass = 'progress-yellow';
+
+                return `
+                    <div class="semana-card ${sem.cruza ? 'cruza' : ''}">
+                        <div class="semana-header">
+                            <div>
+                                <div class="semana-title">Semana ${sem.numero}</div>
+                                <div class="semana-dates">
+                                    ${sem.inicio} - ${sem.fin}
+                                    ${sem.cruza ? '<span style="color: #f6ad55;"> ⚠️</span>' : ''}
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="editarPresupuestoSemana(${mesActual}, ${sem.numero}, ${presupuesto})">
+                                ✏️
+                            </button>
+                        </div>
+                        
+                        <div class="semana-stats">
+                            <div class="stat-row">
+                                <span class="stat-label">Presupuesto:</span>
+                                <span class="stat-value">€${presupuesto.toFixed(2)}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Gastado:</span>
+                                <span class="stat-value red">€${gastado.toFixed(2)}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label"><strong>Restante:</strong></span>
+                                <span class="stat-value ${restante >= 0 ? 'green' : 'red'}">
+                                    <strong>€${restante.toFixed(2)}</strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="progress-bar">
+                            <div class="progress-fill ${progressClass}" style="width: ${Math.min(porcentaje, 100)}%"></div>
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%; margin-bottom: 8px;" onclick="agregarGastoSemanal(${mesActual}, ${sem.numero})">
+                            <span>➕</span> Añadir Gasto
+                        </button>
+
+                        <div>
+                            ${gastos.length === 0 ? 
+                                '<div class="empty-state" style="padding: 20px;"><div style="opacity: 0.5;">Sin gastos</div></div>' :
+                                gastos.map(g => `
+                                    <div class="gasto-item">
+                                        <span class="gasto-concepto">${g.concepto}</span>
+                                        <span class="gasto-importe">€${g.importe.toFixed(2)}</span>
+                                        <button class="gasto-delete" onclick="eliminarGastoSemanal(${mesActual}, ${sem.numero}, '${g.id}')">×</button>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('semanas-grid').innerHTML = html;
+
+            // Alerta si hay semanas que cruzan
+            if (semanas.some(s => s.cruza)) {
+                document.getElementById('semanas-alert').innerHTML = `
+                    <div class="alert alert-warning">
+                        <strong>⚠️ Semanas que cruzan mes:</strong> Estas semanas empiezan en un mes y acaban en otro.
+                        Los gastos de estas semanas cuentan para el mes donde empezó la semana.
+                    </div>
+                `;
+            } else {
+                document.getElementById('semanas-alert').innerHTML = '';
+            }
+        }
+
+        function renderFijos() {
+            const totalActivos = datos.gastosFijos.filter(g => g.activo).reduce((sum, g) => sum + g.importe, 0);
+            document.getElementById('total-fijos').textContent = totalActivos.toFixed(2);
+
+            const html = datos.gastosFijos.map(gasto => `
+                <div class="fijo-item ${!gasto.activo ? 'inactive' : ''}">
+                    <span class="fijo-concepto ${!gasto.activo ? 'inactive' : ''}">${gasto.concepto}</span>
+                    <span class="fijo-importe">€${gasto.importe.toFixed(2)}</span>
+                    <div class="fijo-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="toggleGastoFijo(${gasto.id})" title="${gasto.activo ? 'Desactivar' : 'Activar'}">
+                            ${gasto.activo ? '✓' : '○'}
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="eliminarGastoFijo(${gasto.id})" title="Eliminar">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('lista-fijos').innerHTML = html;
+        }
+
+        function renderPuntuales() {
+            const ingresos = datos.ingresosPuntuales[mesActual] || [];
+            const gastos = datos.gastosPuntuales[mesActual] || [];
+
+            document.getElementById('lista-ingresos-puntuales').innerHTML = ingresos.length === 0 ? 
+                '<div class="empty-state"><div class="empty-state-icon">💰</div><div>Sin ingresos puntuales</div></div>' :
+                ingresos.map(ing => `
+                    <div class="gasto-item">
+                        <span class="gasto-concepto">${ing.concepto}</span>
+                        <span class="gasto-importe" style="color: #48bb78;">€${ing.importe.toFixed(2)}</span>
+                        <button class="gasto-delete" onclick="eliminarIngresoPuntual('${ing.id}')">×</button>
+                    </div>
+                `).join('');
+
+            document.getElementById('lista-gastos-puntuales').innerHTML = gastos.length === 0 ?
+                '<div class="empty-state"><div class="empty-state-icon">💸</div><div>Sin gastos puntuales</div></div>' :
+                gastos.map(gasto => `
+                    <div class="gasto-item">
+                        <span class="gasto-concepto">${gasto.concepto}</span>
+                        <span class="gasto-importe">€${gasto.importe.toFixed(2)}</span>
+                        <button class="gasto-delete" onclick="eliminarGastoPuntual('${gasto.id}')">×</button>
+                    </div>
+                `).join('');
+        }
+
+        function renderProyeccion() {
+            let saldoAcumulado = 0;
+            let html = '';
+
+            for (let mes = mesActual; mes <= 12; mes++) {
+                const totales = calcularTotalesMes(mes);
+                saldoAcumulado += totales.balance;
+
+                html += `
+                    <div class="projection-item">
+                        <div>
+                            <strong style="font-size: 16px;">${MESES[mes - 1]}</strong>
+                            <div style="font-size: 14px; color: #718096; margin-top: 4px;">
+                                Balance: <span style="color: ${totales.balance >= 0 ? '#48bb78' : '#f56565'}; font-weight: 600;">
+                                    ${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(0)}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; color: #718096;">Acumulado</div>
+                            <strong style="font-size: 20px; color: ${saldoAcumulado >= 0 ? '#48bb78' : '#f56565'};">
+                                ${saldoAcumulado >= 0 ? '+' : ''}€${saldoAcumulado.toFixed(0)}
+                            </strong>
+                        </div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('saldo-proyectado').textContent = `${saldoAcumulado >= 0 ? '+' : ''}€${saldoAcumulado.toFixed(0)}`;
+            document.getElementById('proyeccion-meses').innerHTML = html;
+        }
+
+        function actualizarTodo() {
+            const totales = calcularTotalesMes(mesActual);
+            
+            // Actualizar header
+            document.getElementById('mes-actual-nombre').textContent = MESES[mesActual - 1];
+            const balanceHeader = document.getElementById('balance-header');
+            balanceHeader.textContent = `${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(2)}`;
+            balanceHeader.className = `balance-amount ${totales.balance >= 0 ? 'balance-positive' : 'balance-negative'}`;
+
+            // Actualizar nombres de mes en tabs
+            document.getElementById('mes-resumen').textContent = MESES[mesActual - 1];
+            document.getElementById('mes-semanal').textContent = MESES[mesActual - 1];
+            document.getElementById('mes-puntuales').textContent = MESES[mesActual - 1];
+
+            // Renderizar selector de meses
+            renderMonthSelector();
+
+            // Renderizar tab activo
+            const tabActivo = document.querySelector('.tab-content.active').getAttribute('data-tab-content');
+            
+            switch(tabActivo) {
+                case 'resumen':
+                    renderResumen();
+                    break;
+                case 'semanas':
+                    renderSemanal();
+                    break;
+                case 'fijos':
+                    renderFijos();
+                    break;
+                case 'puntuales':
+                    renderPuntuales();
+                    break;
+                case 'proyeccion':
+                    renderProyeccion();
+                    break;
+            }
+        }
+
+        // ========== FUNCIONES DE INTERACCIÓN - SEMANAL ==========
+        function editarPresupuestoSemana(mes, semana, actual) {
+            const nuevo = prompt('Presupuesto para esta semana:', actual);
+            if (nuevo && !isNaN(nuevo)) {
+                const key = `${mes}-${semana}`;
+                datos.presupuestosSemana[key] = parseFloat(nuevo);
+                guardarDatos();
+                actualizarTodo();
+            }
+        }
+
+        function agregarGastoSemanal(mes, semana) {
+            const concepto = prompt('Concepto del gasto:');
+            if (!concepto) return;
+            
+            const importe = prompt('Importe (€):');
+            if (!importe || isNaN(importe)) {
+                alert('Importe inválido');
+                return;
+            }
+
+            const key = `${mes}-${semana}`;
+            if (!datos.gastosSemanales[key]) {
+                datos.gastosSemanales[key] = [];
+            }
+
+            datos.gastosSemanales[key].push({
+                id: Date.now().toString() + Math.random(),
+                concepto,
+                importe: parseFloat(importe),
+                fecha: new Date().toISOString()
+            });
+
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        function eliminarGastoSemanal(mes, semana, id) {
+            if (!confirm('¿Eliminar este gasto?')) return;
+            
+            const key = `${mes}-${semana}`;
+            datos.gastosSemanales[key] = datos.gastosSemanales[key].filter(g => g.id !== id);
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        // ========== FUNCIONES DE INTERACCIÓN - FIJOS ==========
+        function mostrarFormNuevoFijo() {
+            document.getElementById('form-nuevo-fijo').classList.remove('hidden');
+        }
+
+        function cancelarNuevoFijo() {
+            document.getElementById('form-nuevo-fijo').classList.add('hidden');
+            document.getElementById('nuevo-fijo-concepto').value = '';
+            document.getElementById('nuevo-fijo-importe').value = '';
+        }
+
+        function guardarNuevoFijo() {
+            const concepto = document.getElementById('nuevo-fijo-concepto').value.trim();
+            const importe = document.getElementById('nuevo-fijo-importe').value;
+
+            if (!concepto || !importe) {
+                alert('Completa todos los campos');
+                return;
+            }
+
+            datos.gastosFijos.push({
+                id: Date.now(),
+                concepto,
+                importe: parseFloat(importe),
+                activo: true
+            });
+
+            guardarDatos();
+            cancelarNuevoFijo();
+            actualizarTodo();
+        }
+
+        function toggleGastoFijo(id) {
+            const gasto = datos.gastosFijos.find(g => g.id === id);
+            if (gasto) {
+                gasto.activo = !gasto.activo;
+                guardarDatos();
+                actualizarTodo();
+            }
+        }
+
+        function eliminarGastoFijo(id) {
+            if (!confirm('¿Eliminar este gasto fijo permanentemente?')) return;
+            datos.gastosFijos = datos.gastosFijos.filter(g => g.id !== id);
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        // ========== FUNCIONES DE INTERACCIÓN - PUNTUALES ==========
+        function agregarIngresoPuntual() {
+            const concepto = prompt('Concepto del ingreso:');
+            if (!concepto) return;
+            
+            const importe = prompt('Importe (€):');
+            if (!importe || isNaN(importe)) {
+                alert('Importe inválido');
+                return;
+            }
+
+            if (!datos.ingresosPuntuales[mesActual]) {
+                datos.ingresosPuntuales[mesActual] = [];
+            }
+
+            datos.ingresosPuntuales[mesActual].push({
+                id: Date.now().toString() + Math.random(),
+                concepto,
+                importe: parseFloat(importe)
+            });
+
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        function eliminarIngresoPuntual(id) {
+            if (!confirm('¿Eliminar este ingreso?')) return;
+            datos.ingresosPuntuales[mesActual] = datos.ingresosPuntuales[mesActual].filter(i => i.id !== id);
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        function agregarGastoPuntual() {
+            const concepto = prompt('Concepto del gasto:');
+            if (!concepto) return;
+            
+            const importe = prompt('Importe (€):');
+            if (!importe || isNaN(importe)) {
+                alert('Importe inválido');
+                return;
+            }
+
+            if (!datos.gastosPuntuales[mesActual]) {
+                datos.gastosPuntuales[mesActual] = [];
+            }
+
+            datos.gastosPuntuales[mesActual].push({
+                id: Date.now().toString() + Math.random(),
+                concepto,
+                importe: parseFloat(importe)
+            });
+
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        function eliminarGastoPuntual(id) {
+            if (!confirm('¿Eliminar este gasto?')) return;
+            datos.gastosPuntuales[mesActual] = datos.gastosPuntuales[mesActual].filter(g => g.id !== id);
+            guardarDatos();
+            actualizarTodo();
+        }
+
+        // ========== FUNCIONES DE BACKUP/RESTORE ==========
+        function exportarDatos() {
+            try {
+                const dataStr = JSON.stringify(datos, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                const fecha = new Date().toISOString().split('T')[0];
+                link.href = url;
+                link.download = `presupuesto-familiar-${fecha}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                alert('✅ Datos exportados correctamente.\n\nGuarda este archivo en un lugar seguro.\nPodrás importarlo más tarde para recuperar todos tus datos.');
+            } catch (error) {
+                alert('❌ Error al exportar datos: ' + error.message);
+            }
+        }
+
+        function importarDatos() {
+            if (!confirm('⚠️ ATENCIÓN:\n\nEsto reemplazará TODOS tus datos actuales con los del archivo que selecciones.\n\n¿Estás seguro de que quieres continuar?')) {
+                return;
+            }
+
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        
+                        // Validar estructura básica
+                        if (!importedData.ingresosFijos || !importedData.gastosFijos) {
+                            throw new Error('Archivo no válido: estructura incorrecta');
+                        }
+
+                        // Reemplazar datos
+                        datos = importedData;
+                        guardarDatos();
+                        actualizarTodo();
+                        
+                        alert('✅ Datos importados correctamente.\n\nTodos tus datos han sido restaurados.');
+                    } catch (error) {
+                        alert('❌ Error al importar datos:\n\n' + error.message + '\n\nAsegúrate de seleccionar un archivo válido exportado desde esta aplicación.');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+
+        function resetearDatos() {
+            if (!confirm('⚠️ PELIGRO:\n\nEsto borrará TODOS tus datos de forma permanente.\n\nAntes de continuar, te recomendamos EXPORTAR tus datos.\n\n¿Seguro que quieres borrar todo?')) {
+                return;
+            }
+
+            if (!confirm('🚨 ÚLTIMA CONFIRMACIÓN:\n\n¿REALMENTE quieres borrar todos los datos?\n\nEsta acción NO se puede deshacer.')) {
+                return;
+            }
+
+            // Resetear a valores por defecto
+            datos = {
+                ingresosFijos: { aner: 1614.98, iratxe: 2831.71 },
+                gastosFijos: [
+                    {id:1,concepto:'Hipoteca',importe:640.51,activo:true},
+                    {id:2,concepto:'Impuestos coche',importe:23.55,activo:true},
+                    {id:3,concepto:'Impuestos casa',importe:17.40,activo:true},
+                    {id:4,concepto:'ONG',importe:15.00,activo:true},
+                    {id:5,concepto:'Comunidad',importe:100.00,activo:true},
+                    {id:6,concepto:'Metro Iratxe',importe:20.40,activo:true},
+                    {id:7,concepto:'Metro Aner',importe:20.40,activo:true},
+                    {id:8,concepto:'Plan de pensiones',importe:318.27,activo:true},
+                    {id:9,concepto:'Crédito',importe:272.20,activo:true},
+                    {id:10,concepto:'Crédito2',importe:19.47,activo:true},
+                    {id:11,concepto:'Muebles',importe:190.00,activo:true},
+                    {id:12,concepto:'IMQ',importe:256.35,activo:true},
+                    {id:13,concepto:'IMQ niñas',importe:73.60,activo:true},
+                    {id:14,concepto:'Accidentes',importe:6.13,activo:true},
+                    {id:15,concepto:'Decesos',importe:17.05,activo:true},
+                    {id:16,concepto:'Poli',importe:59.05,activo:true},
+                    {id:17,concepto:'Seguro veterinario',importe:32.97,activo:true},
+                    {id:18,concepto:'Comida cook',importe:45.68,activo:true},
+                    {id:19,concepto:'Ordenador',importe:40.26,activo:true},
+                    {id:20,concepto:'Psicólogo',importe:100.00,activo:true},
+                    {id:21,concepto:'Cama',importe:35.00,activo:true},
+                    {id:22,concepto:'Lavavajillas',importe:50.75,activo:true},
+                    {id:23,concepto:'Skyshowtime',importe:4.99,activo:true},
+                    {id:24,concepto:'HBO',importe:5.49,activo:true},
+                    {id:25,concepto:'Netflix',importe:13.99,activo:true},
+                    {id:26,concepto:'Spotify',importe:10.99,activo:true}
+                ],
+                presupuestosSemana: {},
+                gastosSemanales: {},
+                ingresosPuntuales: {},
+                gastosPuntuales: {}
+            };
+
+            localStorage.removeItem('presupuesto-familiar-2026');
+            guardarDatos();
+            actualizarTodo();
+            
+            alert('✅ Todos los datos han sido borrados.\n\nLa aplicación se ha reseteado a los valores por defecto.');
+        }
+
+        // ========== INICIALIZACIÓN ==========
+        window.addEventListener('DOMContentLoaded', function() {
+            cargarDatos();
+            
+            // Setup tab listeners
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    cambiarTab(this.getAttribute('data-tab'));
+                });
+            });
+
+            actualizarTodo();
+        });
+    </script>
+</body>
+</html>
