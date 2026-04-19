@@ -142,9 +142,61 @@
     border-bottom: 1px solid var(--border-soft);
     gap: 10px;
     min-height: 44px;
+    transition: opacity 0.15s;
   }
 
   .item-row:last-child { border-bottom: none; }
+
+  /* Checkbox de validación */
+  .check-btn {
+    background: transparent;
+    border: 1.5px solid var(--border);
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.85rem;
+    color: transparent;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .check-btn:hover { border-color: var(--accent); }
+  .check-btn.checked {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    font-weight: 700;
+  }
+
+  /* Fila marcada como realizada: más apagada con tachado suave */
+  .item-row.done .item-concept,
+  .item-row.done .item-amount {
+    opacity: 0.45;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--text-faint);
+  }
+
+  .week-expense-row.done .item-concept,
+  .week-expense-row.done .item-amount {
+    opacity: 0.45;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--text-faint);
+  }
+
+  .check-btn-sm {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+  }
 
   .item-concept {
     flex: 1;
@@ -346,6 +398,71 @@
     color: var(--expense);
     font-size: 0.95rem;
   }
+
+  /* Presupuesto semanal */
+  .week-budget-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin: 10px 0;
+    border: 1px solid var(--border-soft);
+  }
+
+  .week-budget-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+  }
+
+  .week-budget-label {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .week-budget-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
+    color: var(--info);
+  }
+  .week-budget-value:hover { background: var(--bg-input); }
+  .week-budget-value.empty { color: var(--text-faint); font-style: italic; font-weight: 500; }
+
+  .week-budget-bar {
+    height: 6px;
+    background: var(--bg-input);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+    margin: 4px 0;
+  }
+
+  .week-budget-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    border-radius: 3px;
+  }
+
+  .week-budget-remaining {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .remaining-positive { color: var(--income); font-weight: 600; }
+  .remaining-negative { color: var(--expense); font-weight: 700; }
+  .remaining-neutral { color: var(--text-dim); }
 
   .week-delete {
     background: transparent;
@@ -808,7 +925,7 @@ function createDefaultMonth(idx) {
     nominaAner: { ...DEFAULT_NOMINAS.aner },
     nominaIratxe: { ...DEFAULT_NOMINAS.iratxe },
     saldoAnterior: idx === 0 ? 0 : null, // null = autocalculado desde mes anterior
-    fixed: DEFAULT_FIXED.map(f => ({...f, id: genId()})),
+    fixed: DEFAULT_FIXED.map(f => ({...f, id: genId(), done: false})),
     puntuales: [],
     incomePuntuales: [],
     weeks: []
@@ -827,16 +944,17 @@ function ensureStateShape(s) {
       if (!mo.nominaIratxe) mo.nominaIratxe = { ...DEFAULT_NOMINAS.iratxe };
       if (mo.saldoAnterior === undefined) mo.saldoAnterior = (i === 0 ? 0 : null);
       if (!Array.isArray(mo.fixed)) mo.fixed = DEFAULT_FIXED.map(f => ({...f, id: genId()}));
-      else mo.fixed.forEach(f => { if (!f.id) f.id = genId(); });
+      else mo.fixed.forEach(f => { if (!f.id) f.id = genId(); if (f.done === undefined) f.done = false; });
       if (!Array.isArray(mo.puntuales)) mo.puntuales = [];
-      else mo.puntuales.forEach(p => { if (!p.id) p.id = genId(); });
+      else mo.puntuales.forEach(p => { if (!p.id) p.id = genId(); if (p.done === undefined) p.done = false; });
       if (!Array.isArray(mo.incomePuntuales)) mo.incomePuntuales = [];
-      else mo.incomePuntuales.forEach(p => { if (!p.id) p.id = genId(); });
+      else mo.incomePuntuales.forEach(p => { if (!p.id) p.id = genId(); if (p.done === undefined) p.done = false; });
       if (!Array.isArray(mo.weeks)) mo.weeks = [];
       else mo.weeks.forEach(w => {
         if (!w.id) w.id = genId();
+        if (w.budget === undefined) w.budget = null;
         if (!Array.isArray(w.expenses)) w.expenses = [];
-        w.expenses.forEach(e => { if (!e.id) e.id = genId(); });
+        w.expenses.forEach(e => { if (!e.id) e.id = genId(); if (e.done === undefined) e.done = false; });
       });
     }
   });
@@ -1150,7 +1268,8 @@ function renderIncomePuntuales() {
     list.innerHTML = '<div class="empty-state">Sin ingresos puntuales este mes</div>';
   } else {
     list.innerHTML = mo.incomePuntuales.map(p => `
-      <div class="item-row" data-id="${p.id}">
+      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}">
+        <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como cobrado'}">${p.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
         <div class="item-amount income" data-action="edit-amount">${fmt(p.amount)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
@@ -1161,10 +1280,20 @@ function renderIncomePuntuales() {
   // Listeners delegados
   list.querySelectorAll('.item-row').forEach(row => {
     const id = row.dataset.id;
+    row.querySelector('[data-action="toggle-done"]').onclick = () => toggleIncomePuntualDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editIncomePuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editIncomePuntual(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deleteIncomePuntual(id);
   });
+}
+
+function toggleIncomePuntualDone(id) {
+  const mo = getMonth();
+  const p = mo.incomePuntuales.find(x => x.id === id);
+  if (!p) return;
+  p.done = !p.done;
+  saveState();
+  renderAll();
 }
 
 function editIncomePuntual(id, field) {
@@ -1223,7 +1352,8 @@ function renderFixed() {
     cont.innerHTML = '<div class="empty-state">Sin gastos fijos este mes</div>';
   } else {
     cont.innerHTML = mo.fixed.map(f => `
-      <div class="item-row" data-id="${f.id}">
+      <div class="item-row ${f.done ? 'done' : ''}" data-id="${f.id}">
+        <button class="check-btn ${f.done ? 'checked' : ''}" data-action="toggle-done" title="${f.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${f.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(f.concept)}</div>
         <div class="item-amount expense" data-action="edit-amount">${fmt(f.amount)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
@@ -1234,10 +1364,20 @@ function renderFixed() {
 
   cont.querySelectorAll('.item-row').forEach(row => {
     const id = row.dataset.id;
+    row.querySelector('[data-action="toggle-done"]').onclick = () => toggleFixedDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editFixed(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editFixed(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deleteFixed(id);
   });
+}
+
+function toggleFixedDone(id) {
+  const mo = getMonth();
+  const f = mo.fixed.find(x => x.id === id);
+  if (!f) return;
+  f.done = !f.done;
+  saveState();
+  renderAll();
 }
 
 function editFixed(id, field) {
@@ -1303,7 +1443,7 @@ function showAddFixedForm() {
     const c = document.getElementById('newFixedConcept').value.trim();
     const a = parseFloat(document.getElementById('newFixedAmount').value);
     if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
-    getMonth().fixed.push({ id: genId(), concept: c, amount: a });
+    getMonth().fixed.push({ id: genId(), concept: c, amount: a, done: false });
     saveState();
     form.classList.add('hidden');
     renderAll();
@@ -1327,7 +1467,8 @@ function renderPuntuales() {
     cont.innerHTML = '<div class="empty-state">Sin gastos puntuales este mes</div>';
   } else {
     cont.innerHTML = mo.puntuales.map(p => `
-      <div class="item-row" data-id="${p.id}">
+      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}">
+        <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${p.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
         <div class="item-amount expense" data-action="edit-amount">${fmt(p.amount)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
@@ -1338,10 +1479,20 @@ function renderPuntuales() {
 
   cont.querySelectorAll('.item-row').forEach(row => {
     const id = row.dataset.id;
+    row.querySelector('[data-action="toggle-done"]').onclick = () => togglePuntualDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editPuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editPuntual(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deletePuntual(id);
   });
+}
+
+function togglePuntualDone(id) {
+  const mo = getMonth();
+  const p = mo.puntuales.find(x => x.id === id);
+  if (!p) return;
+  p.done = !p.done;
+  saveState();
+  renderAll();
 }
 
 function editPuntual(id, field) {
@@ -1412,9 +1563,9 @@ function showAddPuntualForm(type) {
     if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
     const mo = getMonth();
     if (type === 'income') {
-      mo.incomePuntuales.push({ id: genId(), concept: c, amount: a });
+      mo.incomePuntuales.push({ id: genId(), concept: c, amount: a, done: false });
     } else {
-      mo.puntuales.push({ id: genId(), concept: c, amount: a });
+      mo.puntuales.push({ id: genId(), concept: c, amount: a, done: false });
     }
     saveState();
     form.classList.add('hidden');
@@ -1451,8 +1602,11 @@ function renderWeeks() {
     if (!card) return;
     card.querySelector('.week-delete').onclick = () => deleteWeek(w.id);
     card.querySelector('.week-add-btn').onclick = () => showAddWeekExpenseForm(w.id);
+    const budgetBtn = card.querySelector('[data-action="edit-budget"]');
+    if (budgetBtn) budgetBtn.onclick = () => editWeekBudget(w.id);
     card.querySelectorAll('.week-expense-row').forEach(row => {
       const eid = row.dataset.eid;
+      row.querySelector('[data-action="toggle-done"]').onclick = () => toggleWeekExpenseDone(w.id, eid);
       row.querySelector('[data-action="edit-concept"]').onclick = () => editWeekExpense(w.id, eid, 'concept');
       row.querySelector('[data-action="edit-amount"]').onclick = () => editWeekExpense(w.id, eid, 'amount');
       row.querySelector('[data-action="delete"]').onclick = () => deleteWeekExpense(w.id, eid);
@@ -1460,8 +1614,87 @@ function renderWeeks() {
   });
 }
 
+function toggleWeekExpenseDone(wid, eid) {
+  const mo = getMonth();
+  const w = mo.weeks.find(x => x.id === wid);
+  if (!w) return;
+  const exp = w.expenses.find(x => x.id === eid);
+  if (!exp) return;
+  exp.done = !exp.done;
+  saveState();
+  renderAll();
+}
+
+function editWeekBudget(wid) {
+  const mo = getMonth();
+  const w = mo.weeks.find(x => x.id === wid);
+  if (!w) return;
+  const current = (w.budget !== null && w.budget !== undefined) ? w.budget : '';
+  const promptMsg = 'Presupuesto para esta semana (€):\n(deja vacío y pulsa OK para quitar el presupuesto)';
+  const result = prompt(promptMsg, current);
+  if (result === null) return; // cancelado
+  if (result.trim() === '') {
+    w.budget = null;
+    saveState();
+    renderAll();
+    toast('Presupuesto quitado');
+    return;
+  }
+  const val = parseFloat(result.replace(',', '.'));
+  if (isNaN(val) || val < 0) {
+    toast('Importe no válido', true);
+    return;
+  }
+  w.budget = val;
+  saveState();
+  renderAll();
+  toast('Presupuesto actualizado');
+}
+
 function renderWeekCard(w) {
   const total = w.expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const hasBudget = w.budget !== null && w.budget !== undefined && w.budget > 0;
+  const remaining = hasBudget ? (w.budget - total) : 0;
+  const pct = hasBudget ? Math.min(100, (total / w.budget) * 100) : 0;
+
+  // Color de la barra según % consumido
+  let barColor = 'var(--income)';
+  if (hasBudget) {
+    if (pct >= 100) barColor = 'var(--expense)';
+    else if (pct >= 80) barColor = 'var(--warning)';
+    else if (pct >= 50) barColor = 'var(--info)';
+  }
+
+  let budgetSection;
+  if (hasBudget) {
+    const remainClass = remaining > 0 ? 'remaining-positive' : (remaining < 0 ? 'remaining-negative' : 'remaining-neutral');
+    const remainLabel = remaining >= 0 ? 'Queda' : 'Pasado';
+    budgetSection = `
+      <div class="week-budget-section">
+        <div class="week-budget-row">
+          <span class="week-budget-label">Presupuesto</span>
+          <span class="week-budget-value" data-action="edit-budget">${fmt(w.budget)}</span>
+        </div>
+        <div class="week-budget-bar">
+          <div class="week-budget-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+        </div>
+        <div class="week-budget-remaining">
+          <span class="remaining-neutral">Gastado ${fmt(total)} · ${pct.toFixed(0)}%</span>
+          <span class="${remainClass}">${remainLabel} ${fmt(Math.abs(remaining))}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    budgetSection = `
+      <div class="week-budget-section">
+        <div class="week-budget-row">
+          <span class="week-budget-label">Presupuesto</span>
+          <span class="week-budget-value empty" data-action="edit-budget">+ Añadir presupuesto</span>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div class="week-card" data-id="${w.id}">
       <div class="week-header">
@@ -1471,11 +1704,13 @@ function renderWeekCard(w) {
           <button class="week-delete" title="Eliminar semana">🗑️</button>
         </div>
       </div>
+      ${budgetSection}
       <div class="week-expenses">
         ${w.expenses.length === 0
           ? '<div style="color: var(--text-faint); font-size: 0.82rem; font-style: italic; padding: 4px 0;">Sin gastos aún</div>'
           : w.expenses.map(e => `
-            <div class="week-expense-row" data-eid="${e.id}">
+            <div class="week-expense-row ${e.done ? 'done' : ''}" data-eid="${e.id}">
+              <button class="check-btn check-btn-sm ${e.done ? 'checked' : ''}" data-action="toggle-done" title="${e.done ? 'Marcar pendiente' : 'Marcar realizado'}">${e.done ? '✓' : ''}</button>
               <div class="item-concept" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-concept">${escapeHTML(e.concept)}</div>
               <div class="item-amount expense" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-amount">${fmt(e.amount)}</div>
               <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
@@ -1522,6 +1757,7 @@ function showAddWeekForm() {
       id: genId(),
       startDate: start,
       endDate: end,
+      budget: null,
       expenses: []
     });
     saveState();
@@ -1569,7 +1805,7 @@ function showAddWeekExpenseForm(wid) {
     const mo = getMonth();
     const w = mo.weeks.find(x => x.id === wid);
     if (!w) return;
-    w.expenses.push({ id: genId(), concept: c, amount: a });
+    w.expenses.push({ id: genId(), concept: c, amount: a, done: false });
     saveState();
     renderAll();
     toast('Gasto añadido');
