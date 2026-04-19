@@ -755,6 +755,64 @@
 
   .hidden { display: none !important; }
 
+  /* Indicador de sincronización */
+  .sync-indicator {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    z-index: 100;
+    box-shadow: var(--shadow);
+    transition: all 0.25s ease;
+  }
+
+  .sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-faint);
+    transition: background 0.2s;
+  }
+
+  .sync-indicator.synced .sync-dot {
+    background: var(--income);
+    box-shadow: 0 0 8px rgba(74,222,128,0.5);
+  }
+  .sync-indicator.syncing .sync-dot {
+    background: var(--warning);
+    animation: pulse 1s infinite;
+  }
+  .sync-indicator.offline .sync-dot {
+    background: var(--expense);
+  }
+  .sync-indicator.error .sync-dot {
+    background: var(--expense);
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @media (max-width: 500px) {
+    .sync-indicator {
+      top: 8px;
+      right: 8px;
+      padding: 4px 10px;
+      font-size: 0.7rem;
+    }
+  }
+
   .empty-state {
     text-align: center;
     padding: 24px 16px;
@@ -771,6 +829,11 @@
 </style>
 </head>
 <body>
+
+<div class="sync-indicator" id="syncIndicator">
+  <div class="sync-dot"></div>
+  <span id="syncText">Conectando...</span>
+</div>
 
 <div class="container">
 
@@ -849,16 +912,41 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
 /* ============================================================
-   PRESUPUESTO FAMILIAR 2026 – APP COMPLETA
+   PRESUPUESTO FAMILIAR 2026 – APP COMPLETA CON FIREBASE
    ============================================================ */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+// === Configuración Firebase ===
+const firebaseConfig = {
+  apiKey: "AIzaSyBkkfBR2ruREG0zIPFiqD6xT3u3cXhs8lI",
+  authDomain: "presupuesto-familiar-f1829.firebaseapp.com",
+  projectId: "presupuesto-familiar-f1829",
+  storageBucket: "presupuesto-familiar-f1829.firebasestorage.app",
+  messagingSenderId: "90127730717",
+  appId: "1:90127730717:web:b5be7c208c5e1644331ef4"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+// Persistencia offline no-bloqueante. Si falla, la app sigue funcionando.
+enableIndexedDbPersistence(db).catch(err => {
+  // failed-precondition = hay otra pestaña abierta; unimplemented = navegador sin soporte
+  console.warn('Persistencia offline no disponible:', err.code || err.message);
+});
+
+const DOC_ID = 'principal'; // documento único compartido
+const docRef = doc(db, 'presupuesto', DOC_ID);
 
 const STORAGE_KEY = 'presupuesto2026_v2';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-
-// Gastos fijos por defecto (solo se aplican al inicializar un mes nuevo)
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];// Gastos fijos por defecto (solo se aplican al inicializar un mes nuevo)
 const DEFAULT_FIXED = [
   {concept: 'Hipoteca', amount: 650},
   {concept: 'Comunidad', amount: 45},
@@ -893,13 +981,19 @@ const DEFAULT_NOMINAS = {
   iratxe: {concept: 'Nómina Iratxe', amount: 2831.71}
 };
 
-// Estado en memoria
-let state = loadState();
+// Estado en memoria: se carga primero de caché local (rápido), luego Firebase lo actualiza
+let state = loadStateFromCache();
 let currentMonthIdx = state.currentMonth ?? new Date().getMonth();
+
+// Control de sincronización
+let isRemoteUpdate = false;  // flag: true cuando la actualización viene de Firebase (no guardar de vuelta)
+let saveTimer = null;        // debounce para no saturar Firebase
+let syncStatus = 'connecting';
+let firstLoadDone = false;
 
 /* ---------- ESTADO & PERSISTENCIA ---------- */
 
-function loadState() {
+function loadStateFromCache() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -907,9 +1001,17 @@ function loadState() {
       return ensureStateShape(parsed);
     }
   } catch (e) {
-    console.error('Error cargando estado:', e);
+    console.error('Error cargando caché:', e);
   }
   return createDefaultState();
+}
+
+function saveCache() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn('No se pudo guardar caché local:', e);
+  }
 }
 
 function createDefaultState() {
@@ -963,14 +1065,113 @@ function ensureStateShape(s) {
 }
 
 function saveState() {
-  try {
-    state.currentMonth = currentMonthIdx;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error('Error guardando:', e);
-    toast('Error al guardar', true);
-  }
+  state.currentMonth = currentMonthIdx;
+  // Guardar caché inmediatamente (por si pierdes conexión)
+  saveCache();
+
+  // Si esta actualización viene de Firebase, no la reenviamos
+  if (isRemoteUpdate) return;
+
+  // Debounce: si el usuario escribe rápido, agrupamos las escrituras
+  setSyncStatus('syncing');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await setDoc(docRef, {
+        data: state,
+        lastUpdated: Date.now(),
+        updatedBy: getClientId()
+      });
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Error guardando en Firebase:', err);
+      setSyncStatus('error');
+    }
+  }, 400);
 }
+
+function getClientId() {
+  let id = localStorage.getItem('presupuesto_clientId');
+  if (!id) {
+    id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    localStorage.setItem('presupuesto_clientId', id);
+  }
+  return id;
+}
+
+function setSyncStatus(status) {
+  syncStatus = status;
+  const el = document.getElementById('syncIndicator');
+  const txt = document.getElementById('syncText');
+  if (!el || !txt) return;
+  el.classList.remove('synced', 'syncing', 'offline', 'error');
+  el.classList.add(status);
+  const messages = {
+    connecting: 'Conectando...',
+    syncing: 'Guardando...',
+    synced: 'Sincronizado',
+    offline: 'Sin conexión',
+    error: 'Error al sincronizar'
+  };
+  txt.textContent = messages[status] || status;
+}
+
+/* ---------- LISTENER EN TIEMPO REAL ---------- */
+
+function setupFirebaseListener() {
+  onSnapshot(docRef,
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      // fromCache=true significa que es dato local offline, no del servidor
+      const fromCache = snapshot.metadata.fromCache;
+      const hasPending = snapshot.metadata.hasPendingWrites;
+
+      if (!snapshot.exists()) {
+        // Primera vez: subir nuestros datos locales a Firebase
+        if (!firstLoadDone) {
+          firstLoadDone = true;
+          console.log('Documento no existe. Subiendo datos locales iniciales...');
+          saveState();
+        }
+        return;
+      }
+
+      const remoteData = snapshot.data();
+      if (!remoteData || !remoteData.data) return;
+
+      // Si el cambio fue hecho por este mismo cliente, ignorar
+      if (remoteData.updatedBy === getClientId() && hasPending) {
+        return;
+      }
+
+      // Aplicar el estado remoto
+      isRemoteUpdate = true;
+      state = ensureStateShape(remoteData.data);
+      currentMonthIdx = state.currentMonth ?? currentMonthIdx;
+      saveCache();
+      renderAll();
+      isRemoteUpdate = false;
+
+      firstLoadDone = true;
+
+      if (fromCache) {
+        setSyncStatus('offline');
+      } else if (!hasPending) {
+        setSyncStatus('synced');
+      }
+    },
+    (error) => {
+      console.error('Error en listener Firebase:', error);
+      setSyncStatus('error');
+    }
+  );
+}
+
+// Detectar conexión online/offline
+window.addEventListener('online', () => {
+  if (syncStatus === 'offline') setSyncStatus('syncing');
+});
+window.addEventListener('offline', () => setSyncStatus('offline'));
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1058,7 +1259,8 @@ function renderMonthNav() {
     b.textContent = MONTHS_SHORT[i];
     b.onclick = () => {
       currentMonthIdx = i;
-      saveState();
+      // Solo cache local, no sincronizar el mes seleccionado entre dispositivos
+      saveCache();
       renderAll();
     };
     nav.appendChild(b);
@@ -1924,7 +2126,7 @@ function importData(file) {
       if (!parsed.months) throw new Error('Archivo inválido');
       state = ensureStateShape(parsed);
       currentMonthIdx = state.currentMonth ?? 0;
-      saveState();
+      saveState(); // esto ya guarda en Firebase + caché
       renderAll();
       toast('Datos importados correctamente');
     } catch (err) {
@@ -1958,6 +2160,8 @@ document.getElementById('importFile').onchange = (e) => {
 document.getElementById('resetBtn').onclick = resetMonth;
 
 renderAll();
+setSyncStatus('connecting');
+setupFirebaseListener();
 </script>
 
 </body>
