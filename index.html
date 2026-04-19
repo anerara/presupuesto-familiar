@@ -1,1539 +1,1728 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presupuesto Familiar 2026 - Aner e Iratxe</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 10px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        /* Header */
-        .header {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            color: #1a202c;
-            margin-bottom: 4px;
-        }
-
-        .header-subtitle {
-            color: #718096;
-            font-size: 14px;
-        }
-
-        .balance-display {
-            text-align: right;
-        }
-
-        .balance-label {
-            font-size: 12px;
-            color: #718096;
-            margin-bottom: 4px;
-        }
-
-        .balance-amount {
-            font-size: 28px;
-            font-weight: bold;
-        }
-
-        .balance-positive {
-            color: #48bb78;
-        }
-
-        .balance-negative {
-            color: #f56565;
-        }
-
-        /* Month Selector */
-        .month-selector {
-            background: white;
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .month-buttons {
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding-bottom: 8px;
-        }
-
-        .month-btn {
-            padding: 10px 16px;
-            border: 2px solid #e2e8f0;
-            background: #f7fafc;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all 0.2s;
-            color: #4a5568;
-        }
-
-        .month-btn:hover {
-            background: #edf2f7;
-            transform: translateY(-2px);
-        }
-
-        .month-btn.active {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-
-        /* Tabs */
-        .tabs-container {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .tabs-header {
-            display: flex;
-            border-bottom: 2px solid #e2e8f0;
-            overflow-x: auto;
-            background: #f7fafc;
-        }
-
-        .tab-btn {
-            padding: 16px 20px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            color: #718096;
-            white-space: nowrap;
-            transition: all 0.2s;
-            border-bottom: 3px solid transparent;
-        }
-
-        .tab-btn:hover {
-            color: #4a5568;
-            background: rgba(102, 126, 234, 0.05);
-        }
-
-        .tab-btn.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-            background: white;
-        }
-
-        .tab-content {
-            display: none;
-            padding: 20px;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Cards */
-        .card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .card-title {
-            font-size: 20px;
-            font-weight: bold;
-            color: #1a202c;
-            margin-bottom: 16px;
-        }
-
-        /* Grid */
-        .grid {
-            display: grid;
-            gap: 16px;
-        }
-
-        .grid-2 {
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-
-        .grid-3 {
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        }
-
-        /* Buttons */
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5a67d8;
-        }
-
-        .btn-success {
-            background: #48bb78;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: #38a169;
-        }
-
-        .btn-danger {
-            background: #f56565;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #e53e3e;
-        }
-
-        .btn-secondary {
-            background: #cbd5e0;
-            color: #2d3748;
-        }
-
-        .btn-secondary:hover {
-            background: #a0aec0;
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-
-        /* Semana Card */
-        .semana-card {
-            background: #f7fafc;
-            border: 2px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 16px;
-            transition: all 0.2s;
-        }
-
-        .semana-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .semana-card.cruza {
-            border-color: #f6ad55;
-            background: #fffaf0;
-        }
-
-        .semana-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 12px;
-        }
-
-        .semana-title {
-            font-weight: bold;
-            color: #2d3748;
-            font-size: 16px;
-        }
-
-        .semana-dates {
-            font-size: 12px;
-            color: #718096;
-            margin-top: 2px;
-        }
-
-        .semana-stats {
-            margin-bottom: 12px;
-        }
-
-        .stat-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            color: #718096;
-        }
-
-        .stat-value {
-            font-weight: 600;
-        }
-
-        .stat-value.red {
-            color: #f56565;
-        }
-
-        .stat-value.green {
-            color: #48bb78;
-        }
-
-        /* Progress Bar */
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #e2e8f0;
-            border-radius: 4px;
-            overflow: hidden;
-            margin: 12px 0;
-        }
-
-        .progress-fill {
-            height: 100%;
-            transition: width 0.3s, background 0.3s;
-        }
-
-        .progress-green { background: #48bb78; }
-        .progress-yellow { background: #f6ad55; }
-        .progress-red { background: #f56565; }
-
-        /* Gasto Item */
-        .gasto-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 12px;
-            background: white;
-            border-radius: 8px;
-            margin-bottom: 6px;
-            font-size: 13px;
-            transition: all 0.2s;
-        }
-
-        .gasto-item:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .gasto-concepto {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .gasto-importe {
-            font-weight: 600;
-            margin: 0 8px;
-        }
-
-        .gasto-delete {
-            background: none;
-            border: none;
-            color: #f56565;
-            cursor: pointer;
-            font-size: 18px;
-            padding: 0 4px;
-        }
-
-        .gasto-delete:hover {
-            color: #e53e3e;
-        }
-
-        /* Input Group */
-        .input-group {
-            margin-bottom: 12px;
-        }
-
-        .input-label {
-            display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-            color: #4a5568;
-            font-size: 14px;
-        }
-
-        .input-field {
-            width: 100%;
-            padding: 10px 12px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-
-        .input-field:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        /* Alert */
-        .alert {
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-top: 16px;
-            border-left: 4px solid;
-            font-size: 14px;
-        }
-
-        .alert-warning {
-            background: #fffaf0;
-            border-color: #f6ad55;
-            color: #744210;
-        }
-
-        .alert-info {
-            background: #ebf8ff;
-            border-color: #4299e1;
-            color: #2c5282;
-        }
-
-        /* Summary Boxes */
-        .summary-box {
-            border: 2px solid;
-            border-radius: 12px;
-            padding: 16px;
-        }
-
-        .summary-box.income {
-            background: #f0fff4;
-            border-color: #9ae6b4;
-        }
-
-        .summary-box.expense {
-            background: #fff5f5;
-            border-color: #fc8181;
-        }
-
-        .summary-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-            font-size: 16px;
-        }
-
-        .summary-title.income {
-            color: #22543d;
-        }
-
-        .summary-title.expense {
-            color: #742a2a;
-        }
-
-        .summary-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
-        .summary-total {
-            display: flex;
-            justify-content: space-between;
-            border-top: 2px solid;
-            padding-top: 8px;
-            margin-top: 8px;
-            font-weight: bold;
-        }
-
-        .summary-box.income .summary-total {
-            border-color: #9ae6b4;
-            color: #22543d;
-        }
-
-        .summary-box.expense .summary-total {
-            border-color: #fc8181;
-            color: #742a2a;
-        }
-
-        /* Balance Banner */
-        .balance-banner {
-            border-radius: 12px;
-            padding: 24px;
-            margin-top: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .balance-banner.positive {
-            background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
-        }
-
-        .balance-banner.negative {
-            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
-        }
-
-        .balance-banner-label {
-            font-size: 14px;
-            color: #2d3748;
-            margin-bottom: 4px;
-        }
-
-        .balance-banner-amount {
-            font-size: 36px;
-            font-weight: bold;
-        }
-
-        .balance-banner.positive .balance-banner-amount {
-            color: #22543d;
-        }
-
-        .balance-banner.negative .balance-banner-amount {
-            color: #742a2a;
-        }
-
-        /* Table */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 14px;
-        }
-
-        th {
-            background: #f7fafc;
-            font-weight: 600;
-            color: #4a5568;
-        }
-
-        tr:hover {
-            background: #f7fafc;
-        }
-
-        tr.current-month {
-            background: #ebf8ff;
-        }
-
-        /* Projection */
-        .projection-banner {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 32px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-        }
-
-        .projection-title {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
-
-        .projection-subtitle {
-            opacity: 0.9;
-            margin-bottom: 20px;
-        }
-
-        .projection-amount-label {
-            font-size: 14px;
-            opacity: 0.8;
-            margin-bottom: 4px;
-        }
-
-        .projection-amount {
-            font-size: 36px;
-            font-weight: bold;
-        }
-
-        .projection-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            background: #f7fafc;
-            border-radius: 10px;
-            margin-bottom: 12px;
-        }
-
-        /* Fijo Item */
-        .fijo-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: #f7fafc;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            transition: all 0.2s;
-        }
-
-        .fijo-item:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .fijo-item.inactive {
-            opacity: 0.5;
-            background: #e2e8f0;
-        }
-
-        .fijo-concepto {
-            flex: 1;
-            font-weight: 600;
-        }
-
-        .fijo-concepto.inactive {
-            text-decoration: line-through;
-        }
-
-        .fijo-importe {
-            color: #f56565;
-            font-weight: bold;
-            margin-right: 12px;
-        }
-
-        .fijo-actions {
-            display: flex;
-            gap: 4px;
-        }
-
-        /* Form */
-        .form-container {
-            background: #ebf8ff;
-            padding: 16px;
-            border-radius: 12px;
-            margin-bottom: 16px;
-            border: 2px solid #4299e1;
-        }
-
-        .form-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #2c5282;
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        /* Hidden */
-        .hidden {
-            display: none !important;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            body {
-                padding: 8px;
-            }
-
-            .header h1 {
-                font-size: 20px;
-            }
-
-            .balance-amount {
-                font-size: 24px;
-            }
-
-            .card {
-                padding: 16px;
-            }
-
-            .card-title {
-                font-size: 18px;
-            }
-
-            .grid-2, .grid-3 {
-                grid-template-columns: 1fr;
-            }
-
-            .tab-btn {
-                padding: 12px 16px;
-                font-size: 13px;
-            }
-
-            .projection-title {
-                font-size: 20px;
-            }
-
-            .projection-amount {
-                font-size: 28px;
-            }
-        }
-
-        /* Loading */
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #718096;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #718096;
-        }
-
-        .empty-state-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presupuesto Familiar 2026 · Aner & Iratxe</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-card: #1a2028;
+    --bg-elevated: #232a34;
+    --bg-input: #2a323d;
+    --border: #2e3744;
+    --border-soft: #242c37;
+    --text: #e8ecf1;
+    --text-dim: #9aa5b4;
+    --text-faint: #6b7685;
+    --accent: #5eead4;
+    --accent-dim: #2dd4bf;
+    --income: #4ade80;
+    --expense: #f87171;
+    --warning: #fbbf24;
+    --info: #60a5fa;
+    --shadow: 0 4px 12px rgba(0,0,0,0.25);
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 20px 16px;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 20px 16px;
+    background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated));
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  header h1 {
+    font-size: clamp(1.3rem, 4vw, 1.8rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+
+  /* === MONTH NAVIGATION === */
+  .month-nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 0;
+    margin-bottom: 20px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .month-nav::-webkit-scrollbar { height: 4px; }
+  .month-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .month-btn {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .month-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+
+  .month-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* === SECTIONS === */
+  .section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-total {
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  /* === ITEM ROWS === */
+  .item-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border-soft);
+    gap: 10px;
+    min-height: 44px;
+  }
+
+  .item-row:last-child { border-bottom: none; }
+
+  .item-concept {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.92rem;
+  }
+
+  .item-concept:hover { background: var(--bg-input); }
+
+  .item-amount {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+    font-size: 0.95rem;
+    white-space: nowrap;
+  }
+
+  .item-amount:hover { background: var(--bg-input); }
+
+  .item-amount.income { color: var(--income); }
+  .item-amount.expense { color: var(--expense); }
+
+  .item-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+
+  .item-delete:hover { color: var(--expense); background: rgba(248,113,113,0.1); }
+
+  /* Inline edit inputs */
+  .inline-edit {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+  }
+
+  .inline-edit-amount {
+    text-align: right;
+    max-width: 130px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  /* === BUTTONS === */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .btn:hover {
+    border-color: var(--accent-dim);
+    background: var(--bg-input);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+  }
+
+  .btn-sm {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    margin-top: 10px;
+  }
+
+  .btn-ghost:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    border-style: solid;
+  }
+
+  /* === FORMS === */
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 130px auto auto;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    margin-top: 10px;
+    align-items: center;
+  }
+
+  .form-row input {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .form-row input:focus { border-color: var(--accent); }
+
+  .form-row input[type="number"] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 600px) {
+    .form-row {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .form-row input:first-child {
+      grid-column: 1 / -1;
+    }
+  }
+
+  /* === WEEKS === */
+  .weeks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .week-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    transition: border-color 0.15s;
+  }
+
+  .week-card:hover { border-color: var(--accent-dim); }
+
+  .week-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .week-dates {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+
+  .week-total {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--expense);
+    font-size: 0.95rem;
+  }
+
+  .week-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .week-delete:hover { color: var(--expense); }
+
+  .week-expenses {
+    min-height: 20px;
+  }
+
+  .week-expense-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.88rem;
+  }
+
+  .week-expense-row:last-child { border-bottom: none; }
+
+  .week-add-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .week-add-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .week-form {
+    display: grid;
+    grid-template-columns: 1fr 100px auto auto;
+    gap: 6px;
+    padding: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    margin-top: 8px;
+    align-items: center;
+  }
+
+  .week-form input {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    outline: none;
+    min-width: 0;
+  }
+
+  .week-form input:focus { border-color: var(--accent); }
+  .week-form input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .week-form-mini-btn {
+    padding: 6px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+  }
+
+  .week-form-mini-btn.cancel {
+    background: var(--border);
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 480px) {
+    .week-form { grid-template-columns: 1fr 1fr; }
+    .week-form input:first-child { grid-column: 1 / -1; }
+  }
+
+  /* === WEEK DATE PICKER === */
+  .add-week-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto auto;
+    gap: 10px;
+    padding: 14px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    margin-top: 10px;
+    align-items: end;
+  }
+
+  .date-field label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .add-week-form input[type="date"] {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    color-scheme: dark;
+  }
+
+  @media (max-width: 600px) {
+    .add-week-form {
+      grid-template-columns: 1fr 1fr;
+    }
+    .add-week-form button {
+      grid-column: span 1;
+    }
+  }
+
+  /* === SUMMARY === */
+  .summary {
+    background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .summary-block {
+    margin-bottom: 16px;
+  }
+
+  .summary-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+  }
+
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 0.92rem;
+    gap: 8px;
+  }
+
+  .summary-label {
+    color: var(--text-dim);
+    flex: 1;
+  }
+
+  .summary-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .summary-divider {
+    border-top: 1px solid var(--border);
+    margin: 8px 0;
+  }
+
+  .summary-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .summary-total.income { color: var(--income); }
+  .summary-total.expense { color: var(--expense); }
+
+  .balance-box {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    text-align: center;
+    border: 2px solid var(--border);
+  }
+
+  .balance-box.positive { border-color: var(--income); background: rgba(74,222,128,0.08); }
+  .balance-box.negative { border-color: var(--expense); background: rgba(248,113,113,0.08); }
+
+  .balance-label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+
+  .balance-amount {
+    font-size: 1.6rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .balance-amount.positive { color: var(--income); }
+  .balance-amount.negative { color: var(--expense); }
+
+  .edit-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+
+  .edit-icon:hover { color: var(--accent); }
+
+  .summary-amount-editable {
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .summary-amount-editable:hover { background: var(--bg-input); }
+
+  /* === FOOTER TOOLS === */
+  .tools {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  /* === TOAST === */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--accent);
+    color: var(--bg);
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 0.88rem;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .toast.error { background: var(--expense); color: white; }
+
+  .hidden { display: none !important; }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--text-faint);
+    font-size: 0.88rem;
+    font-style: italic;
+  }
+
+  /* Focus visible */
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <div class="header-content">
-                <div>
-                    <h1>💰 Presupuesto Familiar 2026</h1>
-                    <div class="header-subtitle">Aner e Iratxe - Gestión Financiera</div>
-                </div>
-                <div class="balance-display">
-                    <div class="balance-label">Balance <span id="mes-actual-nombre">Febrero</span></div>
-                    <div id="balance-header" class="balance-amount balance-positive">€0.00</div>
-                </div>
-            </div>
-            <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
-                <button class="btn btn-success btn-sm" onclick="exportarDatos()">
-                    <span>💾</span> Exportar Datos
-                </button>
-                <button class="btn btn-primary btn-sm" onclick="importarDatos()">
-                    <span>📥</span> Importar Datos
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="resetearDatos()">
-                    <span>🗑️</span> Resetear Todo
-                </button>
-            </div>
-        </div>
 
-        <!-- Month Selector -->
-        <div class="month-selector">
-            <div class="month-buttons" id="month-selector"></div>
-        </div>
+<div class="container">
 
-        <!-- Tabs -->
-        <div class="tabs-container">
-            <div class="tabs-header">
-                <button class="tab-btn active" data-tab="resumen">📊 Resumen</button>
-                <button class="tab-btn" data-tab="semanas">🏪 Semanal</button>
-                <button class="tab-btn" data-tab="fijos">📝 Fijos</button>
-                <button class="tab-btn" data-tab="puntuales">🎯 Puntuales</button>
-                <button class="tab-btn" data-tab="proyeccion">🚀 Proyección</button>
-            </div>
+  <header>
+    <h1>💰 Presupuesto Familiar 2026</h1>
+    <p>Aner & Iratxe · Bilbao</p>
+  </header>
 
-            <!-- Tab Resumen -->
-            <div class="tab-content active" data-tab-content="resumen">
-                <div class="card-title">Resumen <span id="mes-resumen"></span> 2026</div>
-                <div id="resumen-content"></div>
-            </div>
+  <!-- Navegación de meses -->
+  <nav class="month-nav" id="monthNav"></nav>
 
-            <!-- Tab Semanal -->
-            <div class="tab-content" data-tab-content="semanas">
-                <div class="card-title">Presupuesto Semanal - <span id="mes-semanal"></span> 2026</div>
-                <div id="semanas-grid" class="grid grid-3"></div>
-                <div id="semanas-alert"></div>
-            </div>
+  <!-- RESUMEN -->
+  <div class="summary" id="summarySection"></div>
 
-            <!-- Tab Fijos -->
-            <div class="tab-content" data-tab-content="fijos">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <div class="card-title" style="margin: 0;">Gastos Fijos Mensuales</div>
-                        <div class="header-subtitle">Total activos: €<span id="total-fijos">0.00</span>/mes</div>
-                    </div>
-                    <button class="btn btn-primary" onclick="mostrarFormNuevoFijo()">
-                        <span>➕</span> Nuevo Gasto Fijo
-                    </button>
-                </div>
-                
-                <div id="form-nuevo-fijo" class="form-container hidden">
-                    <div class="form-title">Añadir Gasto Fijo</div>
-                    <div class="grid grid-2">
-                        <div class="input-group">
-                            <label class="input-label">Concepto</label>
-                            <input type="text" id="nuevo-fijo-concepto" class="input-field" placeholder="Ej: Netflix">
-                        </div>
-                        <div class="input-group">
-                            <label class="input-label">Importe (€)</label>
-                            <input type="number" step="0.01" id="nuevo-fijo-importe" class="input-field" placeholder="0.00">
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button class="btn btn-success" onclick="guardarNuevoFijo()">
-                            <span>💾</span> Guardar
-                        </button>
-                        <button class="btn btn-secondary" onclick="cancelarNuevoFijo()">
-                            <span>✖</span> Cancelar
-                        </button>
-                    </div>
-                </div>
-
-                <div id="lista-fijos"></div>
-            </div>
-
-            <!-- Tab Puntuales -->
-            <div class="tab-content" data-tab-content="puntuales">
-                <div class="card-title">Gastos e Ingresos Puntuales - <span id="mes-puntuales"></span> 2026</div>
-                <div class="grid grid-2">
-                    <div class="summary-box income">
-                        <div class="summary-title income">💰 Ingresos Puntuales</div>
-                        <button class="btn btn-success" style="width: 100%; margin-bottom: 12px;" onclick="agregarIngresoPuntual()">
-                            <span>➕</span> Añadir Ingreso
-                        </button>
-                        <div id="lista-ingresos-puntuales"></div>
-                    </div>
-
-                    <div class="summary-box expense">
-                        <div class="summary-title expense">💸 Gastos Puntuales</div>
-                        <button class="btn btn-danger" style="width: 100%; margin-bottom: 12px;" onclick="agregarGastoPuntual()">
-                            <span>➕</span> Añadir Gasto
-                        </button>
-                        <div id="lista-gastos-puntuales"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tab Proyección -->
-            <div class="tab-content" data-tab-content="proyeccion">
-                <div class="projection-banner">
-                    <div class="projection-title">🚀 Tu Futuro Financiero</div>
-                    <div class="projection-subtitle">Proyección hasta diciembre 2026</div>
-                    <div class="projection-amount-label">Saldo proyectado fin de año</div>
-                    <div id="saldo-proyectado" class="projection-amount">€0</div>
-                </div>
-                <div class="card-title">Proyección Mes a Mes</div>
-                <div id="proyeccion-meses"></div>
-            </div>
-        </div>
+  <!-- INGRESOS -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">💰 Ingresos</h2>
+      <span class="section-total income" id="incomeTotal">€0.00</span>
     </div>
 
-    <script>
-        // ========== CONSTANTES ==========
-        const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-        
-        const CALENDARIO_2026 = {
-            1: [{numero:1,inicio:'29/12',fin:'04/01',cruza:true},{numero:2,inicio:'05/01',fin:'11/01'},{numero:3,inicio:'12/01',fin:'18/01'},{numero:4,inicio:'19/01',fin:'25/01'},{numero:5,inicio:'26/01',fin:'01/02',cruza:true}],
-            2: [{numero:1,inicio:'26/01',fin:'01/02',cruza:true},{numero:2,inicio:'02/02',fin:'08/02'},{numero:3,inicio:'09/02',fin:'15/02'},{numero:4,inicio:'16/02',fin:'22/02'},{numero:5,inicio:'23/02',fin:'01/03',cruza:true}],
-            3: [{numero:1,inicio:'23/02',fin:'01/03',cruza:true},{numero:2,inicio:'02/03',fin:'08/03'},{numero:3,inicio:'09/03',fin:'15/03'},{numero:4,inicio:'16/03',fin:'22/03'},{numero:5,inicio:'23/03',fin:'29/03'},{numero:6,inicio:'30/03',fin:'05/04',cruza:true}],
-            4: [{numero:1,inicio:'30/03',fin:'05/04',cruza:true},{numero:2,inicio:'06/04',fin:'12/04'},{numero:3,inicio:'13/04',fin:'19/04'},{numero:4,inicio:'20/04',fin:'26/04'},{numero:5,inicio:'27/04',fin:'03/05',cruza:true}],
-            5: [{numero:1,inicio:'27/04',fin:'03/05',cruza:true},{numero:2,inicio:'04/05',fin:'10/05'},{numero:3,inicio:'11/05',fin:'17/05'},{numero:4,inicio:'18/05',fin:'24/05'},{numero:5,inicio:'25/05',fin:'31/05'}],
-            6: [{numero:1,inicio:'01/06',fin:'07/06'},{numero:2,inicio:'08/06',fin:'14/06'},{numero:3,inicio:'15/06',fin:'21/06'},{numero:4,inicio:'22/06',fin:'28/06'},{numero:5,inicio:'29/06',fin:'05/07',cruza:true}],
-            7: [{numero:1,inicio:'29/06',fin:'05/07',cruza:true},{numero:2,inicio:'06/07',fin:'12/07'},{numero:3,inicio:'13/07',fin:'19/07'},{numero:4,inicio:'20/07',fin:'26/07'},{numero:5,inicio:'27/07',fin:'02/08',cruza:true}],
-            8: [{numero:1,inicio:'27/07',fin:'02/08',cruza:true},{numero:2,inicio:'03/08',fin:'09/08'},{numero:3,inicio:'10/08',fin:'16/08'},{numero:4,inicio:'17/08',fin:'23/08'},{numero:5,inicio:'24/08',fin:'30/08'},{numero:6,inicio:'31/08',fin:'06/09',cruza:true}],
-            9: [{numero:1,inicio:'31/08',fin:'06/09',cruza:true},{numero:2,inicio:'07/09',fin:'13/09'},{numero:3,inicio:'14/09',fin:'20/09'},{numero:4,inicio:'21/09',fin:'27/09'},{numero:5,inicio:'28/09',fin:'04/10',cruza:true}],
-            10: [{numero:1,inicio:'28/09',fin:'04/10',cruza:true},{numero:2,inicio:'05/10',fin:'11/10'},{numero:3,inicio:'12/10',fin:'18/10'},{numero:4,inicio:'19/10',fin:'25/10'},{numero:5,inicio:'26/10',fin:'01/11',cruza:true}],
-            11: [{numero:1,inicio:'26/10',fin:'01/11',cruza:true},{numero:2,inicio:'02/11',fin:'08/11'},{numero:3,inicio:'09/11',fin:'15/11'},{numero:4,inicio:'16/11',fin:'22/11'},{numero:5,inicio:'23/11',fin:'29/11'},{numero:6,inicio:'30/11',fin:'06/12',cruza:true}],
-            12: [{numero:1,inicio:'30/11',fin:'06/12',cruza:true},{numero:2,inicio:'07/12',fin:'13/12'},{numero:3,inicio:'14/12',fin:'20/12'},{numero:4,inicio:'21/12',fin:'27/12'},{numero:5,inicio:'28/12',fin:'03/01',cruza:true}]
-        };
-
-        // ========== DATOS ==========
-        let mesActual = 2; // Febrero
-
-        let datos = {
-            ingresosFijos: { aner: 1614.98, iratxe: 2831.71 },
-            gastosFijos: [
-                {id:1,concepto:'Hipoteca',importe:640.51,activo:true},
-                {id:2,concepto:'Impuestos coche',importe:23.55,activo:true},
-                {id:3,concepto:'Impuestos casa',importe:17.40,activo:true},
-                {id:4,concepto:'ONG',importe:15.00,activo:true},
-                {id:5,concepto:'Comunidad',importe:100.00,activo:true},
-                {id:6,concepto:'Metro Iratxe',importe:20.40,activo:true},
-                {id:7,concepto:'Metro Aner',importe:20.40,activo:true},
-                {id:8,concepto:'Plan de pensiones',importe:318.27,activo:true},
-                {id:9,concepto:'Crédito',importe:272.20,activo:true},
-                {id:10,concepto:'Crédito2',importe:19.47,activo:true},
-                {id:11,concepto:'Muebles',importe:190.00,activo:true},
-                {id:12,concepto:'IMQ',importe:256.35,activo:true},
-                {id:13,concepto:'IMQ niñas',importe:73.60,activo:true},
-                {id:14,concepto:'Accidentes',importe:6.13,activo:true},
-                {id:15,concepto:'Decesos',importe:17.05,activo:true},
-                {id:16,concepto:'Poli',importe:59.05,activo:true},
-                {id:17,concepto:'Seguro veterinario',importe:32.97,activo:true},
-                {id:18,concepto:'Comida cook',importe:45.68,activo:true},
-                {id:19,concepto:'Ordenador',importe:40.26,activo:true},
-                {id:20,concepto:'Psicólogo',importe:100.00,activo:true},
-                {id:21,concepto:'Cama',importe:35.00,activo:true},
-                {id:22,concepto:'Lavavajillas',importe:50.75,activo:true},
-                {id:23,concepto:'Skyshowtime',importe:4.99,activo:true},
-                {id:24,concepto:'HBO',importe:5.49,activo:true},
-                {id:25,concepto:'Netflix',importe:13.99,activo:true},
-                {id:26,concepto:'Spotify',importe:10.99,activo:true}
-            ],
-            presupuestosSemana: {},
-            gastosSemanales: {},
-            ingresosPuntuales: {},
-            gastosPuntuales: {}
-        };
-
-        // ========== FUNCIONES DE ALMACENAMIENTO ==========
-        function cargarDatos() {
-            try {
-                const guardado = localStorage.getItem('presupuesto-familiar-2026');
-                if (guardado) {
-                    datos = JSON.parse(guardado);
-                }
-            } catch (error) {
-                console.error('Error al cargar datos:', error);
-            }
-        }
-
-        function guardarDatos() {
-            try {
-                localStorage.setItem('presupuesto-familiar-2026', JSON.stringify(datos));
-            } catch (error) {
-                console.error('Error al guardar datos:', error);
-            }
-        }
-
-        // ========== FUNCIONES DE CÁLCULO ==========
-        function calcularTotalesMes(mes) {
-            const ingresosFijos = datos.ingresosFijos.aner + datos.ingresosFijos.iratxe;
-            const ingresosPuntuales = (datos.ingresosPuntuales[mes] || []).reduce((sum, i) => sum + i.importe, 0);
-            const totalIngresos = ingresosFijos + ingresosPuntuales;
-
-            const gastosFijos = datos.gastosFijos.filter(g => g.activo).reduce((sum, g) => sum + g.importe, 0);
-            const gastosPuntuales = (datos.gastosPuntuales[mes] || []).reduce((sum, g) => sum + g.importe, 0);
-            
-            let gastosSemanales = 0;
-            const semanas = CALENDARIO_2026[mes] || [];
-            semanas.forEach(sem => {
-                const key = `${mes}-${sem.numero}`;
-                gastosSemanales += (datos.gastosSemanales[key] || []).reduce((sum, g) => sum + g.importe, 0);
-            });
-
-            const totalGastos = gastosFijos + gastosPuntuales + gastosSemanales;
-            const balance = totalIngresos - totalGastos;
-
-            return {
-                ingresosFijos,
-                ingresosPuntuales,
-                totalIngresos,
-                gastosFijos,
-                gastosPuntuales,
-                gastosSemanales,
-                totalGastos,
-                balance
-            };
-        }
-
-        // ========== FUNCIONES DE NAVEGACIÓN ==========
-        function cambiarMes(mes) {
-            mesActual = mes;
-            actualizarTodo();
-        }
-
-        function cambiarTab(tabName) {
-            // Actualizar botones
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
-
-            // Actualizar contenido
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.querySelector(`[data-tab-content="${tabName}"]`).classList.add('active');
-
-            actualizarTodo();
-        }
-
-        // ========== FUNCIONES DE RENDERIZADO ==========
-        function renderMonthSelector() {
-            const html = MESES.map((mes, idx) => `
-                <button class="month-btn ${mesActual === idx + 1 ? 'active' : ''}" onclick="cambiarMes(${idx + 1})">
-                    ${mes}
-                </button>
-            `).join('');
-            document.getElementById('month-selector').innerHTML = html;
-        }
-
-        function renderResumen() {
-            const totales = calcularTotalesMes(mesActual);
-
-            const html = `
-                <div class="grid grid-2">
-                    <div class="summary-box income">
-                        <div class="summary-title income">💰 INGRESOS</div>
-                        <div class="summary-item">
-                            <span>Nómina Aner:</span>
-                            <strong>€${datos.ingresosFijos.aner.toFixed(2)}</strong>
-                        </div>
-                        <div class="summary-item">
-                            <span>Nómina Iratxe:</span>
-                            <strong>€${datos.ingresosFijos.iratxe.toFixed(2)}</strong>
-                        </div>
-                        <div class="summary-item" style="font-size: 13px; color: #718096;">
-                            <span>Puntuales:</span>
-                            <span>€${totales.ingresosPuntuales.toFixed(2)}</span>
-                        </div>
-                        <div class="summary-total">
-                            <span>TOTAL:</span>
-                            <span style="font-size: 18px;">€${totales.totalIngresos.toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    <div class="summary-box expense">
-                        <div class="summary-title expense">💸 GASTOS</div>
-                        <div class="summary-item">
-                            <span>Fijos:</span>
-                            <strong>€${totales.gastosFijos.toFixed(2)}</strong>
-                        </div>
-                        <div class="summary-item">
-                            <span>Semanales:</span>
-                            <strong>€${totales.gastosSemanales.toFixed(2)}</strong>
-                        </div>
-                        <div class="summary-item" style="font-size: 13px; color: #718096;">
-                            <span>Puntuales:</span>
-                            <span>€${totales.gastosPuntuales.toFixed(2)}</span>
-                        </div>
-                        <div class="summary-total">
-                            <span>TOTAL:</span>
-                            <span style="font-size: 18px;">€${totales.totalGastos.toFixed(2)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="balance-banner ${totales.balance >= 0 ? 'positive' : 'negative'}">
-                    <div>
-                        <div class="balance-banner-label">Balance del Mes</div>
-                        <div class="balance-banner-amount">
-                            ${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(2)}
-                        </div>
-                    </div>
-                    <div style="font-size: 48px; opacity: 0.3;">
-                        ${totales.balance >= 0 ? '🎉' : '⚠️'}
-                    </div>
-                </div>
-            `;
-
-            document.getElementById('resumen-content').innerHTML = html;
-        }
-
-        function renderSemanal() {
-            const semanas = CALENDARIO_2026[mesActual] || [];
-            
-            const html = semanas.map(sem => {
-                const key = `${mesActual}-${sem.numero}`;
-                const presupuesto = datos.presupuestosSemana[key] || 300;
-                const gastos = datos.gastosSemanales[key] || [];
-                const gastado = gastos.reduce((sum, g) => sum + g.importe, 0);
-                const restante = presupuesto - gastado;
-                const porcentaje = (gastado / presupuesto) * 100;
-
-                let progressClass = 'progress-green';
-                if (porcentaje > 100) progressClass = 'progress-red';
-                else if (porcentaje > 80) progressClass = 'progress-yellow';
-
-                return `
-                    <div class="semana-card ${sem.cruza ? 'cruza' : ''}">
-                        <div class="semana-header">
-                            <div>
-                                <div class="semana-title">Semana ${sem.numero}</div>
-                                <div class="semana-dates">
-                                    ${sem.inicio} - ${sem.fin}
-                                    ${sem.cruza ? '<span style="color: #f6ad55;"> ⚠️</span>' : ''}
-                                </div>
-                            </div>
-                            <button class="btn btn-secondary btn-sm" onclick="editarPresupuestoSemana(${mesActual}, ${sem.numero}, ${presupuesto})">
-                                ✏️
-                            </button>
-                        </div>
-                        
-                        <div class="semana-stats">
-                            <div class="stat-row">
-                                <span class="stat-label">Presupuesto:</span>
-                                <span class="stat-value">€${presupuesto.toFixed(2)}</span>
-                            </div>
-                            <div class="stat-row">
-                                <span class="stat-label">Gastado:</span>
-                                <span class="stat-value red">€${gastado.toFixed(2)}</span>
-                            </div>
-                            <div class="stat-row">
-                                <span class="stat-label"><strong>Restante:</strong></span>
-                                <span class="stat-value ${restante >= 0 ? 'green' : 'red'}">
-                                    <strong>€${restante.toFixed(2)}</strong>
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="progress-bar">
-                            <div class="progress-fill ${progressClass}" style="width: ${Math.min(porcentaje, 100)}%"></div>
-                        </div>
-
-                        <button class="btn btn-primary" style="width: 100%; margin-bottom: 8px;" onclick="agregarGastoSemanal(${mesActual}, ${sem.numero})">
-                            <span>➕</span> Añadir Gasto
-                        </button>
-
-                        <div>
-                            ${gastos.length === 0 ? 
-                                '<div class="empty-state" style="padding: 20px;"><div style="opacity: 0.5;">Sin gastos</div></div>' :
-                                gastos.map(g => `
-                                    <div class="gasto-item">
-                                        <span class="gasto-concepto">${g.concepto}</span>
-                                        <span class="gasto-importe">€${g.importe.toFixed(2)}</span>
-                                        <button class="gasto-delete" onclick="eliminarGastoSemanal(${mesActual}, ${sem.numero}, '${g.id}')">×</button>
-                                    </div>
-                                `).join('')
-                            }
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            document.getElementById('semanas-grid').innerHTML = html;
-
-            // Alerta si hay semanas que cruzan
-            if (semanas.some(s => s.cruza)) {
-                document.getElementById('semanas-alert').innerHTML = `
-                    <div class="alert alert-warning">
-                        <strong>⚠️ Semanas que cruzan mes:</strong> Estas semanas empiezan en un mes y acaban en otro.
-                        Los gastos de estas semanas cuentan para el mes donde empezó la semana.
-                    </div>
-                `;
-            } else {
-                document.getElementById('semanas-alert').innerHTML = '';
-            }
-        }
-
-        function renderFijos() {
-            const totalActivos = datos.gastosFijos.filter(g => g.activo).reduce((sum, g) => sum + g.importe, 0);
-            document.getElementById('total-fijos').textContent = totalActivos.toFixed(2);
-
-            const html = datos.gastosFijos.map(gasto => `
-                <div class="fijo-item ${!gasto.activo ? 'inactive' : ''}">
-                    <span class="fijo-concepto ${!gasto.activo ? 'inactive' : ''}">${gasto.concepto}</span>
-                    <span class="fijo-importe">€${gasto.importe.toFixed(2)}</span>
-                    <div class="fijo-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="toggleGastoFijo(${gasto.id})" title="${gasto.activo ? 'Desactivar' : 'Activar'}">
-                            ${gasto.activo ? '✓' : '○'}
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="eliminarGastoFijo(${gasto.id})" title="Eliminar">
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-
-            document.getElementById('lista-fijos').innerHTML = html;
-        }
-
-        function renderPuntuales() {
-            const ingresos = datos.ingresosPuntuales[mesActual] || [];
-            const gastos = datos.gastosPuntuales[mesActual] || [];
-
-            document.getElementById('lista-ingresos-puntuales').innerHTML = ingresos.length === 0 ? 
-                '<div class="empty-state"><div class="empty-state-icon">💰</div><div>Sin ingresos puntuales</div></div>' :
-                ingresos.map(ing => `
-                    <div class="gasto-item">
-                        <span class="gasto-concepto">${ing.concepto}</span>
-                        <span class="gasto-importe" style="color: #48bb78;">€${ing.importe.toFixed(2)}</span>
-                        <button class="gasto-delete" onclick="eliminarIngresoPuntual('${ing.id}')">×</button>
-                    </div>
-                `).join('');
-
-            document.getElementById('lista-gastos-puntuales').innerHTML = gastos.length === 0 ?
-                '<div class="empty-state"><div class="empty-state-icon">💸</div><div>Sin gastos puntuales</div></div>' :
-                gastos.map(gasto => `
-                    <div class="gasto-item">
-                        <span class="gasto-concepto">${gasto.concepto}</span>
-                        <span class="gasto-importe">€${gasto.importe.toFixed(2)}</span>
-                        <button class="gasto-delete" onclick="eliminarGastoPuntual('${gasto.id}')">×</button>
-                    </div>
-                `).join('');
-        }
-
-        function renderProyeccion() {
-            let saldoAcumulado = 0;
-            let html = '';
-
-            for (let mes = mesActual; mes <= 12; mes++) {
-                const totales = calcularTotalesMes(mes);
-                saldoAcumulado += totales.balance;
-
-                html += `
-                    <div class="projection-item">
-                        <div>
-                            <strong style="font-size: 16px;">${MESES[mes - 1]}</strong>
-                            <div style="font-size: 14px; color: #718096; margin-top: 4px;">
-                                Balance: <span style="color: ${totales.balance >= 0 ? '#48bb78' : '#f56565'}; font-weight: 600;">
-                                    ${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(0)}
-                                </span>
-                            </div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 12px; color: #718096;">Acumulado</div>
-                            <strong style="font-size: 20px; color: ${saldoAcumulado >= 0 ? '#48bb78' : '#f56565'};">
-                                ${saldoAcumulado >= 0 ? '+' : ''}€${saldoAcumulado.toFixed(0)}
-                            </strong>
-                        </div>
-                    </div>
-                `;
-            }
-
-            document.getElementById('saldo-proyectado').textContent = `${saldoAcumulado >= 0 ? '+' : ''}€${saldoAcumulado.toFixed(0)}`;
-            document.getElementById('proyeccion-meses').innerHTML = html;
-        }
-
-        function actualizarTodo() {
-            const totales = calcularTotalesMes(mesActual);
-            
-            // Actualizar header
-            document.getElementById('mes-actual-nombre').textContent = MESES[mesActual - 1];
-            const balanceHeader = document.getElementById('balance-header');
-            balanceHeader.textContent = `${totales.balance >= 0 ? '+' : ''}€${totales.balance.toFixed(2)}`;
-            balanceHeader.className = `balance-amount ${totales.balance >= 0 ? 'balance-positive' : 'balance-negative'}`;
-
-            // Actualizar nombres de mes en tabs
-            document.getElementById('mes-resumen').textContent = MESES[mesActual - 1];
-            document.getElementById('mes-semanal').textContent = MESES[mesActual - 1];
-            document.getElementById('mes-puntuales').textContent = MESES[mesActual - 1];
-
-            // Renderizar selector de meses
-            renderMonthSelector();
-
-            // Renderizar tab activo
-            const tabActivo = document.querySelector('.tab-content.active').getAttribute('data-tab-content');
-            
-            switch(tabActivo) {
-                case 'resumen':
-                    renderResumen();
-                    break;
-                case 'semanas':
-                    renderSemanal();
-                    break;
-                case 'fijos':
-                    renderFijos();
-                    break;
-                case 'puntuales':
-                    renderPuntuales();
-                    break;
-                case 'proyeccion':
-                    renderProyeccion();
-                    break;
-            }
-        }
-
-        // ========== FUNCIONES DE INTERACCIÓN - SEMANAL ==========
-        function editarPresupuestoSemana(mes, semana, actual) {
-            const nuevo = prompt('Presupuesto para esta semana:', actual);
-            if (nuevo && !isNaN(nuevo)) {
-                const key = `${mes}-${semana}`;
-                datos.presupuestosSemana[key] = parseFloat(nuevo);
-                guardarDatos();
-                actualizarTodo();
-            }
-        }
-
-        function agregarGastoSemanal(mes, semana) {
-            const concepto = prompt('Concepto del gasto:');
-            if (!concepto) return;
-            
-            const importe = prompt('Importe (€):');
-            if (!importe || isNaN(importe)) {
-                alert('Importe inválido');
-                return;
-            }
-
-            const key = `${mes}-${semana}`;
-            if (!datos.gastosSemanales[key]) {
-                datos.gastosSemanales[key] = [];
-            }
-
-            datos.gastosSemanales[key].push({
-                id: Date.now().toString() + Math.random(),
-                concepto,
-                importe: parseFloat(importe),
-                fecha: new Date().toISOString()
-            });
-
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        function eliminarGastoSemanal(mes, semana, id) {
-            if (!confirm('¿Eliminar este gasto?')) return;
-            
-            const key = `${mes}-${semana}`;
-            datos.gastosSemanales[key] = datos.gastosSemanales[key].filter(g => g.id !== id);
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        // ========== FUNCIONES DE INTERACCIÓN - FIJOS ==========
-        function mostrarFormNuevoFijo() {
-            document.getElementById('form-nuevo-fijo').classList.remove('hidden');
-        }
-
-        function cancelarNuevoFijo() {
-            document.getElementById('form-nuevo-fijo').classList.add('hidden');
-            document.getElementById('nuevo-fijo-concepto').value = '';
-            document.getElementById('nuevo-fijo-importe').value = '';
-        }
-
-        function guardarNuevoFijo() {
-            const concepto = document.getElementById('nuevo-fijo-concepto').value.trim();
-            const importe = document.getElementById('nuevo-fijo-importe').value;
-
-            if (!concepto || !importe) {
-                alert('Completa todos los campos');
-                return;
-            }
-
-            datos.gastosFijos.push({
-                id: Date.now(),
-                concepto,
-                importe: parseFloat(importe),
-                activo: true
-            });
-
-            guardarDatos();
-            cancelarNuevoFijo();
-            actualizarTodo();
-        }
-
-        function toggleGastoFijo(id) {
-            const gasto = datos.gastosFijos.find(g => g.id === id);
-            if (gasto) {
-                gasto.activo = !gasto.activo;
-                guardarDatos();
-                actualizarTodo();
-            }
-        }
-
-        function eliminarGastoFijo(id) {
-            if (!confirm('¿Eliminar este gasto fijo permanentemente?')) return;
-            datos.gastosFijos = datos.gastosFijos.filter(g => g.id !== id);
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        // ========== FUNCIONES DE INTERACCIÓN - PUNTUALES ==========
-        function agregarIngresoPuntual() {
-            const concepto = prompt('Concepto del ingreso:');
-            if (!concepto) return;
-            
-            const importe = prompt('Importe (€):');
-            if (!importe || isNaN(importe)) {
-                alert('Importe inválido');
-                return;
-            }
-
-            if (!datos.ingresosPuntuales[mesActual]) {
-                datos.ingresosPuntuales[mesActual] = [];
-            }
-
-            datos.ingresosPuntuales[mesActual].push({
-                id: Date.now().toString() + Math.random(),
-                concepto,
-                importe: parseFloat(importe)
-            });
-
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        function eliminarIngresoPuntual(id) {
-            if (!confirm('¿Eliminar este ingreso?')) return;
-            datos.ingresosPuntuales[mesActual] = datos.ingresosPuntuales[mesActual].filter(i => i.id !== id);
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        function agregarGastoPuntual() {
-            const concepto = prompt('Concepto del gasto:');
-            if (!concepto) return;
-            
-            const importe = prompt('Importe (€):');
-            if (!importe || isNaN(importe)) {
-                alert('Importe inválido');
-                return;
-            }
-
-            if (!datos.gastosPuntuales[mesActual]) {
-                datos.gastosPuntuales[mesActual] = [];
-            }
-
-            datos.gastosPuntuales[mesActual].push({
-                id: Date.now().toString() + Math.random(),
-                concepto,
-                importe: parseFloat(importe)
-            });
-
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        function eliminarGastoPuntual(id) {
-            if (!confirm('¿Eliminar este gasto?')) return;
-            datos.gastosPuntuales[mesActual] = datos.gastosPuntuales[mesActual].filter(g => g.id !== id);
-            guardarDatos();
-            actualizarTodo();
-        }
-
-        // ========== FUNCIONES DE BACKUP/RESTORE ==========
-        function exportarDatos() {
-            try {
-                const dataStr = JSON.stringify(datos, null, 2);
-                const dataBlob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(dataBlob);
-                const link = document.createElement('a');
-                const fecha = new Date().toISOString().split('T')[0];
-                link.href = url;
-                link.download = `presupuesto-familiar-${fecha}.json`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                alert('✅ Datos exportados correctamente.\n\nGuarda este archivo en un lugar seguro.\nPodrás importarlo más tarde para recuperar todos tus datos.');
-            } catch (error) {
-                alert('❌ Error al exportar datos: ' + error.message);
-            }
-        }
-
-        function importarDatos() {
-            if (!confirm('⚠️ ATENCIÓN:\n\nEsto reemplazará TODOS tus datos actuales con los del archivo que selecciones.\n\n¿Estás seguro de que quieres continuar?')) {
-                return;
-            }
-
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.json';
-            
-            input.onchange = function(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    try {
-                        const importedData = JSON.parse(event.target.result);
-                        
-                        // Validar estructura básica
-                        if (!importedData.ingresosFijos || !importedData.gastosFijos) {
-                            throw new Error('Archivo no válido: estructura incorrecta');
-                        }
-
-                        // Reemplazar datos
-                        datos = importedData;
-                        guardarDatos();
-                        actualizarTodo();
-                        
-                        alert('✅ Datos importados correctamente.\n\nTodos tus datos han sido restaurados.');
-                    } catch (error) {
-                        alert('❌ Error al importar datos:\n\n' + error.message + '\n\nAsegúrate de seleccionar un archivo válido exportado desde esta aplicación.');
-                    }
-                };
-                reader.readAsText(file);
-            };
-            
-            input.click();
-        }
-
-        function resetearDatos() {
-            if (!confirm('⚠️ PELIGRO:\n\nEsto borrará TODOS tus datos de forma permanente.\n\nAntes de continuar, te recomendamos EXPORTAR tus datos.\n\n¿Seguro que quieres borrar todo?')) {
-                return;
-            }
-
-            if (!confirm('🚨 ÚLTIMA CONFIRMACIÓN:\n\n¿REALMENTE quieres borrar todos los datos?\n\nEsta acción NO se puede deshacer.')) {
-                return;
-            }
-
-            // Resetear a valores por defecto
-            datos = {
-                ingresosFijos: { aner: 1614.98, iratxe: 2831.71 },
-                gastosFijos: [
-                    {id:1,concepto:'Hipoteca',importe:640.51,activo:true},
-                    {id:2,concepto:'Impuestos coche',importe:23.55,activo:true},
-                    {id:3,concepto:'Impuestos casa',importe:17.40,activo:true},
-                    {id:4,concepto:'ONG',importe:15.00,activo:true},
-                    {id:5,concepto:'Comunidad',importe:100.00,activo:true},
-                    {id:6,concepto:'Metro Iratxe',importe:20.40,activo:true},
-                    {id:7,concepto:'Metro Aner',importe:20.40,activo:true},
-                    {id:8,concepto:'Plan de pensiones',importe:318.27,activo:true},
-                    {id:9,concepto:'Crédito',importe:272.20,activo:true},
-                    {id:10,concepto:'Crédito2',importe:19.47,activo:true},
-                    {id:11,concepto:'Muebles',importe:190.00,activo:true},
-                    {id:12,concepto:'IMQ',importe:256.35,activo:true},
-                    {id:13,concepto:'IMQ niñas',importe:73.60,activo:true},
-                    {id:14,concepto:'Accidentes',importe:6.13,activo:true},
-                    {id:15,concepto:'Decesos',importe:17.05,activo:true},
-                    {id:16,concepto:'Poli',importe:59.05,activo:true},
-                    {id:17,concepto:'Seguro veterinario',importe:32.97,activo:true},
-                    {id:18,concepto:'Comida cook',importe:45.68,activo:true},
-                    {id:19,concepto:'Ordenador',importe:40.26,activo:true},
-                    {id:20,concepto:'Psicólogo',importe:100.00,activo:true},
-                    {id:21,concepto:'Cama',importe:35.00,activo:true},
-                    {id:22,concepto:'Lavavajillas',importe:50.75,activo:true},
-                    {id:23,concepto:'Skyshowtime',importe:4.99,activo:true},
-                    {id:24,concepto:'HBO',importe:5.49,activo:true},
-                    {id:25,concepto:'Netflix',importe:13.99,activo:true},
-                    {id:26,concepto:'Spotify',importe:10.99,activo:true}
-                ],
-                presupuestosSemana: {},
-                gastosSemanales: {},
-                ingresosPuntuales: {},
-                gastosPuntuales: {}
-            };
-
-            localStorage.removeItem('presupuesto-familiar-2026');
-            guardarDatos();
-            actualizarTodo();
-            
-            alert('✅ Todos los datos han sido borrados.\n\nLa aplicación se ha reseteado a los valores por defecto.');
-        }
-
-        // ========== INICIALIZACIÓN ==========
-        window.addEventListener('DOMContentLoaded', function() {
-            cargarDatos();
-            
-            // Setup tab listeners
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    cambiarTab(this.getAttribute('data-tab'));
-                });
-            });
-
-            actualizarTodo();
-        });
-    </script>
+    <!-- Nóminas (editables por mes) -->
+    <div id="nominasContainer"></div>
+
+    <!-- Ingresos puntuales -->
+    <div id="incomePuntualesContainer" style="margin-top: 14px;">
+      <div style="color: var(--text-dim); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">Ingresos puntuales</div>
+      <div id="incomePuntualesList"></div>
+      <div id="incomePuntualForm" class="hidden"></div>
+      <button class="btn btn-ghost" id="addIncomePuntualBtn">+ Añadir ingreso puntual</button>
+    </div>
+  </section>
+
+  <!-- GASTOS FIJOS -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">📌 Gastos Fijos</h2>
+      <span class="section-total expense" id="fixedTotal">€0.00</span>
+    </div>
+    <div id="fixedContainer"></div>
+    <div id="fixedForm" class="hidden"></div>
+    <button class="btn btn-ghost" id="addFixedBtn">+ Añadir gasto fijo</button>
+  </section>
+
+  <!-- GASTOS PUNTUALES -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">⚡ Gastos Puntuales</h2>
+      <span class="section-total expense" id="puntualesTotal">€0.00</span>
+    </div>
+    <div id="puntualesContainer"></div>
+    <div id="puntualForm" class="hidden"></div>
+    <button class="btn btn-ghost" id="addPuntualBtn">+ Añadir gasto puntual</button>
+  </section>
+
+  <!-- SEMANAS -->
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">📅 Semanas</h2>
+      <span class="section-total expense" id="weeksTotal">€0.00</span>
+    </div>
+    <div id="weeksContainer"></div>
+    <div id="weekForm" class="hidden"></div>
+    <button class="btn btn-ghost" id="addWeekBtn">+ Añadir semana</button>
+  </section>
+
+  <!-- HERRAMIENTAS -->
+  <div class="tools">
+    <button class="btn" id="exportBtn">📥 Exportar datos</button>
+    <button class="btn" id="importBtn">📤 Importar datos</button>
+    <input type="file" id="importFile" accept=".json" class="hidden">
+    <button class="btn" id="resetBtn">🗑️ Resetear mes</button>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   PRESUPUESTO FAMILIAR 2026 – APP COMPLETA
+   ============================================================ */
+
+const STORAGE_KEY = 'presupuesto2026_v2';
+const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// Gastos fijos por defecto (solo se aplican al inicializar un mes nuevo)
+const DEFAULT_FIXED = [
+  {concept: 'Hipoteca', amount: 650},
+  {concept: 'Comunidad', amount: 45},
+  {concept: 'IBI', amount: 35},
+  {concept: 'Seguro hogar', amount: 28},
+  {concept: 'Luz', amount: 95},
+  {concept: 'Gas', amount: 65},
+  {concept: 'Agua', amount: 35},
+  {concept: 'Internet + móvil', amount: 75},
+  {concept: 'Móvil Aner', amount: 18},
+  {concept: 'Móvil Iratxe', amount: 18},
+  {concept: 'Netflix', amount: 13.99},
+  {concept: 'Spotify', amount: 11.99},
+  {concept: 'Amazon Prime', amount: 5.99},
+  {concept: 'Gimnasio Aner', amount: 35},
+  {concept: 'Gimnasio Iratxe', amount: 35},
+  {concept: 'Seguro coche', amount: 55},
+  {concept: 'Gasolina', amount: 120},
+  {concept: 'ITV / Mantenimiento', amount: 15},
+  {concept: 'Parking', amount: 85},
+  {concept: 'Compra semanal (media)', amount: 400},
+  {concept: 'Seguro médico', amount: 95},
+  {concept: 'Farmacia', amount: 25},
+  {concept: 'Ahorro automático', amount: 300},
+  {concept: 'Plan pensiones', amount: 100},
+  {concept: 'Donaciones', amount: 20},
+  {concept: 'Suscripciones varias', amount: 10.53}
+];
+
+const DEFAULT_NOMINAS = {
+  aner: {concept: 'Nómina Aner', amount: 1614.98},
+  iratxe: {concept: 'Nómina Iratxe', amount: 2831.71}
+};
+
+// Estado en memoria
+let state = loadState();
+let currentMonthIdx = state.currentMonth ?? new Date().getMonth();
+
+/* ---------- ESTADO & PERSISTENCIA ---------- */
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return ensureStateShape(parsed);
+    }
+  } catch (e) {
+    console.error('Error cargando estado:', e);
+  }
+  return createDefaultState();
+}
+
+function createDefaultState() {
+  const s = { months: {}, currentMonth: new Date().getMonth() };
+  MONTHS.forEach((m, i) => {
+    s.months[m] = createDefaultMonth(i);
+  });
+  return s;
+}
+
+function createDefaultMonth(idx) {
+  return {
+    nominaAner: { ...DEFAULT_NOMINAS.aner },
+    nominaIratxe: { ...DEFAULT_NOMINAS.iratxe },
+    saldoAnterior: idx === 0 ? 0 : null, // null = autocalculado desde mes anterior
+    fixed: DEFAULT_FIXED.map(f => ({...f, id: genId()})),
+    puntuales: [],
+    incomePuntuales: [],
+    weeks: []
+  };
+}
+
+function ensureStateShape(s) {
+  // Migración: asegurar que cada mes tenga toda la estructura
+  if (!s.months) s.months = {};
+  MONTHS.forEach((m, i) => {
+    if (!s.months[m]) {
+      s.months[m] = createDefaultMonth(i);
+    } else {
+      const mo = s.months[m];
+      if (!mo.nominaAner) mo.nominaAner = { ...DEFAULT_NOMINAS.aner };
+      if (!mo.nominaIratxe) mo.nominaIratxe = { ...DEFAULT_NOMINAS.iratxe };
+      if (mo.saldoAnterior === undefined) mo.saldoAnterior = (i === 0 ? 0 : null);
+      if (!Array.isArray(mo.fixed)) mo.fixed = DEFAULT_FIXED.map(f => ({...f, id: genId()}));
+      else mo.fixed.forEach(f => { if (!f.id) f.id = genId(); });
+      if (!Array.isArray(mo.puntuales)) mo.puntuales = [];
+      else mo.puntuales.forEach(p => { if (!p.id) p.id = genId(); });
+      if (!Array.isArray(mo.incomePuntuales)) mo.incomePuntuales = [];
+      else mo.incomePuntuales.forEach(p => { if (!p.id) p.id = genId(); });
+      if (!Array.isArray(mo.weeks)) mo.weeks = [];
+      else mo.weeks.forEach(w => {
+        if (!w.id) w.id = genId();
+        if (!Array.isArray(w.expenses)) w.expenses = [];
+        w.expenses.forEach(e => { if (!e.id) e.id = genId(); });
+      });
+    }
+  });
+  if (s.currentMonth === undefined) s.currentMonth = new Date().getMonth();
+  return s;
+}
+
+function saveState() {
+  try {
+    state.currentMonth = currentMonthIdx;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Error guardando:', e);
+    toast('Error al guardar', true);
+  }
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function getMonth() {
+  return state.months[MONTHS[currentMonthIdx]];
+}
+
+/* ---------- CÁLCULOS ---------- */
+
+function calcSaldoAnterior(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  // Enero siempre es manual
+  if (monthIdx === 0) return mo.saldoAnterior || 0;
+  // Si tiene valor manual guardado, úsalo
+  if (mo.saldoAnterior !== null && mo.saldoAnterior !== undefined) {
+    return mo.saldoAnterior;
+  }
+  // Calcular automáticamente desde mes anterior
+  return calcBalance(monthIdx - 1);
+}
+
+function calcIncome(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  const saldo = calcSaldoAnterior(monthIdx);
+  const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
+  const puntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
+  return saldo + nominas + puntuales;
+}
+
+function calcFixed(monthIdx) {
+  return state.months[MONTHS[monthIdx]].fixed.reduce((s, f) => s + (f.amount || 0), 0);
+}
+
+function calcPuntuales(monthIdx) {
+  return state.months[MONTHS[monthIdx]].puntuales.reduce((s, p) => s + (p.amount || 0), 0);
+}
+
+function calcWeeks(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  return mo.weeks.reduce((s, w) =>
+    s + w.expenses.reduce((ss, e) => ss + (e.amount || 0), 0), 0);
+}
+
+function calcExpenses(monthIdx) {
+  return calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
+}
+
+function calcBalance(monthIdx) {
+  return calcIncome(monthIdx) - calcExpenses(monthIdx);
+}
+
+/* ---------- FORMATO ---------- */
+
+function fmt(n) {
+  const v = Number(n || 0);
+  return '€' + v.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('es-ES', {day: '2-digit', month: 'short'});
+}
+
+/* ---------- RENDER ---------- */
+
+function renderAll() {
+  renderMonthNav();
+  renderSummary();
+  renderNominas();
+  renderIncomePuntuales();
+  renderFixed();
+  renderPuntuales();
+  renderWeeks();
+}
+
+function renderMonthNav() {
+  const nav = document.getElementById('monthNav');
+  nav.innerHTML = '';
+  MONTHS.forEach((m, i) => {
+    const b = document.createElement('button');
+    b.className = 'month-btn' + (i === currentMonthIdx ? ' active' : '');
+    b.textContent = MONTHS_SHORT[i];
+    b.onclick = () => {
+      currentMonthIdx = i;
+      saveState();
+      renderAll();
+    };
+    nav.appendChild(b);
+  });
+}
+
+function renderSummary() {
+  const mo = getMonth();
+  const saldo = calcSaldoAnterior(currentMonthIdx);
+  const income = calcIncome(currentMonthIdx);
+  const fixed = calcFixed(currentMonthIdx);
+  const puntuales = calcPuntuales(currentMonthIdx);
+  const weeksT = calcWeeks(currentMonthIdx);
+  const expenses = calcExpenses(currentMonthIdx);
+  const balance = income - expenses;
+  const incomePuntT = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
+
+  const saldoEditable = currentMonthIdx === 0 || (mo.saldoAnterior !== null && mo.saldoAnterior !== undefined);
+  const saldoLabel = currentMonthIdx === 0
+    ? 'Saldo diciembre 2025'
+    : `Saldo ${MONTHS[currentMonthIdx - 1]} ` + (saldoEditable ? '(manual)' : '(auto)');
+
+  const el = document.getElementById('summarySection');
+  el.innerHTML = `
+    <div class="summary-block">
+      <div class="summary-title">💰 Ingresos</div>
+      <div class="summary-row">
+        <span class="summary-label">${saldoLabel}</span>
+        <span>
+          <span class="summary-amount-editable" id="saldoAnteriorAmount">${fmt(saldo)}</span>
+          <button class="edit-icon" id="editSaldoBtn" title="Editar saldo">✏️</button>
+          ${(currentMonthIdx > 0 && saldoEditable) ? '<button class="edit-icon" id="resetSaldoBtn" title="Volver a automático">↻</button>' : ''}
+        </span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">${mo.nominaAner.concept}</span>
+        <span class="summary-value">${fmt(mo.nominaAner.amount)}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">${mo.nominaIratxe.concept}</span>
+        <span class="summary-value">${fmt(mo.nominaIratxe.amount)}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Puntuales</span>
+        <span class="summary-value">${fmt(incomePuntT)}</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-total income">
+        <span>TOTAL</span>
+        <span>${fmt(income)}</span>
+      </div>
+    </div>
+
+    <div class="summary-block">
+      <div class="summary-title">💸 Gastos</div>
+      <div class="summary-row">
+        <span class="summary-label">Fijos</span>
+        <span class="summary-value">${fmt(fixed)}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Semanales</span>
+        <span class="summary-value">${fmt(weeksT)}</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Puntuales</span>
+        <span class="summary-value">${fmt(puntuales)}</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-total expense">
+        <span>TOTAL</span>
+        <span>${fmt(expenses)}</span>
+      </div>
+    </div>
+
+    <div class="balance-box ${balance >= 0 ? 'positive' : 'negative'}">
+      <div class="balance-label">Balance del mes</div>
+      <div class="balance-amount ${balance >= 0 ? 'positive' : 'negative'}">${fmt(balance)}</div>
+    </div>
+  `;
+
+  // Listeners
+  document.getElementById('editSaldoBtn').onclick = editSaldoAnterior;
+  document.getElementById('saldoAnteriorAmount').onclick = editSaldoAnterior;
+  const resetBtn = document.getElementById('resetSaldoBtn');
+  if (resetBtn) resetBtn.onclick = resetSaldoAnterior;
+}
+
+function editSaldoAnterior() {
+  const mo = getMonth();
+  const current = calcSaldoAnterior(currentMonthIdx);
+  const span = document.getElementById('saldoAnteriorAmount');
+  const original = span.textContent;
+  span.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current.toFixed(2)}" id="saldoInput">`;
+  const input = document.getElementById('saldoInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) {
+        mo.saldoAnterior = val;
+        saveState();
+        renderAll();
+        toast('Saldo actualizado');
+        return;
+      }
+    }
+    span.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+function resetSaldoAnterior() {
+  if (currentMonthIdx === 0) return;
+  const mo = getMonth();
+  mo.saldoAnterior = null;
+  saveState();
+  renderAll();
+  toast('Saldo vuelve a modo automático');
+}
+
+/* ---------- NÓMINAS ---------- */
+
+function renderNominas() {
+  const mo = getMonth();
+  const cont = document.getElementById('nominasContainer');
+  cont.innerHTML = `
+    <div style="color: var(--text-dim); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">Nóminas</div>
+    ${renderNominaRow('aner', mo.nominaAner)}
+    ${renderNominaRow('iratxe', mo.nominaIratxe)}
+  `;
+  // Actualizar total de ingresos
+  document.getElementById('incomeTotal').textContent = fmt(calcIncome(currentMonthIdx));
+
+  // Listeners
+  ['aner', 'iratxe'].forEach(key => {
+    document.getElementById(`nomina-concept-${key}`).onclick = () => editNomina(key, 'concept');
+    document.getElementById(`nomina-amount-${key}`).onclick = () => editNomina(key, 'amount');
+  });
+}
+
+function renderNominaRow(key, data) {
+  return `
+    <div class="item-row">
+      <div class="item-concept" id="nomina-concept-${key}">${escapeHTML(data.concept)}</div>
+      <div class="item-amount income" id="nomina-amount-${key}">${fmt(data.amount)}</div>
+    </div>
+  `;
+}
+
+function editNomina(key, field) {
+  const mo = getMonth();
+  const nomKey = key === 'aner' ? 'nominaAner' : 'nominaIratxe';
+  const el = document.getElementById(`nomina-${field}-${key}`);
+  const current = mo[nomKey][field];
+  const original = el.textContent;
+
+  if (field === 'concept') {
+    el.innerHTML = `<input type="text" class="inline-edit" value="${escapeHTML(current)}" id="nomInput">`;
+  } else {
+    el.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current}" id="nomInput">`;
+  }
+
+  const input = document.getElementById('nomInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = field === 'amount' ? parseFloat(input.value) : input.value.trim();
+      if (field === 'amount' && !isNaN(val)) {
+        mo[nomKey].amount = val;
+        saveState();
+        renderAll();
+        toast('Nómina actualizada');
+        return;
+      } else if (field === 'concept' && val) {
+        mo[nomKey].concept = val;
+        saveState();
+        renderAll();
+        toast('Nómina actualizada');
+        return;
+      }
+    }
+    el.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+/* ---------- INGRESOS PUNTUALES ---------- */
+
+function renderIncomePuntuales() {
+  const mo = getMonth();
+  const list = document.getElementById('incomePuntualesList');
+  if (mo.incomePuntuales.length === 0) {
+    list.innerHTML = '<div class="empty-state">Sin ingresos puntuales este mes</div>';
+  } else {
+    list.innerHTML = mo.incomePuntuales.map(p => `
+      <div class="item-row" data-id="${p.id}">
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
+        <div class="item-amount income" data-action="edit-amount">${fmt(p.amount)}</div>
+        <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
+      </div>
+    `).join('');
+  }
+
+  // Listeners delegados
+  list.querySelectorAll('.item-row').forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-action="edit-concept"]').onclick = () => editIncomePuntual(id, 'concept');
+    row.querySelector('[data-action="edit-amount"]').onclick = () => editIncomePuntual(id, 'amount');
+    row.querySelector('[data-action="delete"]').onclick = () => deleteIncomePuntual(id);
+  });
+}
+
+function editIncomePuntual(id, field) {
+  const mo = getMonth();
+  const p = mo.incomePuntuales.find(x => x.id === id);
+  if (!p) return;
+  const row = document.querySelector(`#incomePuntualesList .item-row[data-id="${id}"]`);
+  const el = row.querySelector(field === 'concept' ? '[data-action="edit-concept"]' : '[data-action="edit-amount"]');
+  const original = el.textContent;
+  const current = p[field];
+
+  if (field === 'concept') {
+    el.innerHTML = `<input type="text" class="inline-edit" value="${escapeHTML(current)}" id="iptInput">`;
+  } else {
+    el.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current}" id="iptInput">`;
+  }
+
+  const input = document.getElementById('iptInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = field === 'amount' ? parseFloat(input.value) : input.value.trim();
+      if (field === 'amount' && !isNaN(val)) {
+        p.amount = val; saveState(); renderAll(); toast('Actualizado'); return;
+      } else if (field === 'concept' && val) {
+        p.concept = val; saveState(); renderAll(); toast('Actualizado'); return;
+      }
+    }
+    el.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+function deleteIncomePuntual(id) {
+  const mo = getMonth();
+  if (!confirm('¿Eliminar este ingreso puntual?')) return;
+  mo.incomePuntuales = mo.incomePuntuales.filter(p => p.id !== id);
+  saveState();
+  renderAll();
+  toast('Eliminado');
+}
+
+/* ---------- GASTOS FIJOS ---------- */
+
+function renderFixed() {
+  const mo = getMonth();
+  const cont = document.getElementById('fixedContainer');
+  if (mo.fixed.length === 0) {
+    cont.innerHTML = '<div class="empty-state">Sin gastos fijos este mes</div>';
+  } else {
+    cont.innerHTML = mo.fixed.map(f => `
+      <div class="item-row" data-id="${f.id}">
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(f.concept)}</div>
+        <div class="item-amount expense" data-action="edit-amount">${fmt(f.amount)}</div>
+        <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
+      </div>
+    `).join('');
+  }
+  document.getElementById('fixedTotal').textContent = fmt(calcFixed(currentMonthIdx));
+
+  cont.querySelectorAll('.item-row').forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-action="edit-concept"]').onclick = () => editFixed(id, 'concept');
+    row.querySelector('[data-action="edit-amount"]').onclick = () => editFixed(id, 'amount');
+    row.querySelector('[data-action="delete"]').onclick = () => deleteFixed(id);
+  });
+}
+
+function editFixed(id, field) {
+  const mo = getMonth();
+  const f = mo.fixed.find(x => x.id === id);
+  if (!f) return;
+  const row = document.querySelector(`#fixedContainer .item-row[data-id="${id}"]`);
+  const el = row.querySelector(field === 'concept' ? '[data-action="edit-concept"]' : '[data-action="edit-amount"]');
+  const original = el.textContent;
+  const current = f[field];
+
+  if (field === 'concept') {
+    el.innerHTML = `<input type="text" class="inline-edit" value="${escapeHTML(current)}" id="fxInput">`;
+  } else {
+    el.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current}" id="fxInput">`;
+  }
+
+  const input = document.getElementById('fxInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = field === 'amount' ? parseFloat(input.value) : input.value.trim();
+      if (field === 'amount' && !isNaN(val)) {
+        f.amount = val; saveState(); renderAll(); toast('Actualizado'); return;
+      } else if (field === 'concept' && val) {
+        f.concept = val; saveState(); renderAll(); toast('Actualizado'); return;
+      }
+    }
+    el.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+function deleteFixed(id) {
+  const mo = getMonth();
+  if (!confirm('¿Eliminar este gasto fijo (solo en este mes)?')) return;
+  mo.fixed = mo.fixed.filter(f => f.id !== id);
+  saveState();
+  renderAll();
+  toast('Eliminado');
+}
+
+function showAddFixedForm() {
+  const form = document.getElementById('fixedForm');
+  form.classList.remove('hidden');
+  form.innerHTML = `
+    <div class="form-row">
+      <input type="text" placeholder="Concepto" id="newFixedConcept" autofocus>
+      <input type="number" step="0.01" placeholder="Importe" id="newFixedAmount">
+      <button class="btn btn-primary btn-sm" id="saveNewFixed">Añadir</button>
+      <button class="btn btn-sm" id="cancelNewFixed">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('newFixedConcept').focus();
+  document.getElementById('saveNewFixed').onclick = () => {
+    const c = document.getElementById('newFixedConcept').value.trim();
+    const a = parseFloat(document.getElementById('newFixedAmount').value);
+    if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
+    getMonth().fixed.push({ id: genId(), concept: c, amount: a });
+    saveState();
+    form.classList.add('hidden');
+    renderAll();
+    toast('Añadido');
+  };
+  document.getElementById('cancelNewFixed').onclick = () => {
+    form.classList.add('hidden');
+    form.innerHTML = '';
+  };
+  document.getElementById('newFixedAmount').onkeydown = (e) => {
+    if (e.key === 'Enter') document.getElementById('saveNewFixed').click();
+  };
+}
+
+/* ---------- PUNTUALES (GASTOS) ---------- */
+
+function renderPuntuales() {
+  const mo = getMonth();
+  const cont = document.getElementById('puntualesContainer');
+  if (mo.puntuales.length === 0) {
+    cont.innerHTML = '<div class="empty-state">Sin gastos puntuales este mes</div>';
+  } else {
+    cont.innerHTML = mo.puntuales.map(p => `
+      <div class="item-row" data-id="${p.id}">
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
+        <div class="item-amount expense" data-action="edit-amount">${fmt(p.amount)}</div>
+        <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
+      </div>
+    `).join('');
+  }
+  document.getElementById('puntualesTotal').textContent = fmt(calcPuntuales(currentMonthIdx));
+
+  cont.querySelectorAll('.item-row').forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-action="edit-concept"]').onclick = () => editPuntual(id, 'concept');
+    row.querySelector('[data-action="edit-amount"]').onclick = () => editPuntual(id, 'amount');
+    row.querySelector('[data-action="delete"]').onclick = () => deletePuntual(id);
+  });
+}
+
+function editPuntual(id, field) {
+  const mo = getMonth();
+  const p = mo.puntuales.find(x => x.id === id);
+  if (!p) return;
+  const row = document.querySelector(`#puntualesContainer .item-row[data-id="${id}"]`);
+  const el = row.querySelector(field === 'concept' ? '[data-action="edit-concept"]' : '[data-action="edit-amount"]');
+  const original = el.textContent;
+  const current = p[field];
+
+  if (field === 'concept') {
+    el.innerHTML = `<input type="text" class="inline-edit" value="${escapeHTML(current)}" id="pnInput">`;
+  } else {
+    el.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current}" id="pnInput">`;
+  }
+
+  const input = document.getElementById('pnInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = field === 'amount' ? parseFloat(input.value) : input.value.trim();
+      if (field === 'amount' && !isNaN(val)) {
+        p.amount = val; saveState(); renderAll(); toast('Actualizado'); return;
+      } else if (field === 'concept' && val) {
+        p.concept = val; saveState(); renderAll(); toast('Actualizado'); return;
+      }
+    }
+    el.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+function deletePuntual(id) {
+  const mo = getMonth();
+  if (!confirm('¿Eliminar este gasto puntual?')) return;
+  mo.puntuales = mo.puntuales.filter(p => p.id !== id);
+  saveState();
+  renderAll();
+  toast('Eliminado');
+}
+
+function showAddPuntualForm(type) {
+  // type: 'expense' | 'income'
+  const formId = type === 'income' ? 'incomePuntualForm' : 'puntualForm';
+  const form = document.getElementById(formId);
+  const label = type === 'income' ? 'Añadir ingreso' : 'Añadir gasto';
+  form.classList.remove('hidden');
+  form.innerHTML = `
+    <div class="form-row">
+      <input type="text" placeholder="Concepto" id="newPuntualConcept_${type}" autofocus>
+      <input type="number" step="0.01" placeholder="Importe" id="newPuntualAmount_${type}">
+      <button class="btn btn-primary btn-sm" id="saveNewPuntual_${type}">${label}</button>
+      <button class="btn btn-sm" id="cancelNewPuntual_${type}">Cancelar</button>
+    </div>
+  `;
+  document.getElementById(`newPuntualConcept_${type}`).focus();
+  document.getElementById(`saveNewPuntual_${type}`).onclick = () => {
+    const c = document.getElementById(`newPuntualConcept_${type}`).value.trim();
+    const a = parseFloat(document.getElementById(`newPuntualAmount_${type}`).value);
+    if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
+    const mo = getMonth();
+    if (type === 'income') {
+      mo.incomePuntuales.push({ id: genId(), concept: c, amount: a });
+    } else {
+      mo.puntuales.push({ id: genId(), concept: c, amount: a });
+    }
+    saveState();
+    form.classList.add('hidden');
+    renderAll();
+    toast('Añadido');
+  };
+  document.getElementById(`cancelNewPuntual_${type}`).onclick = () => {
+    form.classList.add('hidden');
+    form.innerHTML = '';
+  };
+  document.getElementById(`newPuntualAmount_${type}`).onkeydown = (e) => {
+    if (e.key === 'Enter') document.getElementById(`saveNewPuntual_${type}`).click();
+  };
+}
+
+/* ---------- SEMANAS ---------- */
+
+function renderWeeks() {
+  const mo = getMonth();
+  const cont = document.getElementById('weeksContainer');
+
+  if (mo.weeks.length === 0) {
+    cont.innerHTML = '<div class="empty-state">Sin semanas añadidas este mes. Pulsa "+ Añadir semana" abajo.</div>';
+  } else {
+    cont.innerHTML = '<div class="weeks-grid">' +
+      mo.weeks.map(w => renderWeekCard(w)).join('') +
+      '</div>';
+  }
+  document.getElementById('weeksTotal').textContent = fmt(calcWeeks(currentMonthIdx));
+
+  // Listeners
+  mo.weeks.forEach(w => {
+    const card = document.querySelector(`.week-card[data-id="${w.id}"]`);
+    if (!card) return;
+    card.querySelector('.week-delete').onclick = () => deleteWeek(w.id);
+    card.querySelector('.week-add-btn').onclick = () => showAddWeekExpenseForm(w.id);
+    card.querySelectorAll('.week-expense-row').forEach(row => {
+      const eid = row.dataset.eid;
+      row.querySelector('[data-action="edit-concept"]').onclick = () => editWeekExpense(w.id, eid, 'concept');
+      row.querySelector('[data-action="edit-amount"]').onclick = () => editWeekExpense(w.id, eid, 'amount');
+      row.querySelector('[data-action="delete"]').onclick = () => deleteWeekExpense(w.id, eid);
+    });
+  });
+}
+
+function renderWeekCard(w) {
+  const total = w.expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  return `
+    <div class="week-card" data-id="${w.id}">
+      <div class="week-header">
+        <div class="week-dates">${fmtDate(w.startDate)} — ${fmtDate(w.endDate)}</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="week-total">${fmt(total)}</span>
+          <button class="week-delete" title="Eliminar semana">🗑️</button>
+        </div>
+      </div>
+      <div class="week-expenses">
+        ${w.expenses.length === 0
+          ? '<div style="color: var(--text-faint); font-size: 0.82rem; font-style: italic; padding: 4px 0;">Sin gastos aún</div>'
+          : w.expenses.map(e => `
+            <div class="week-expense-row" data-eid="${e.id}">
+              <div class="item-concept" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-concept">${escapeHTML(e.concept)}</div>
+              <div class="item-amount expense" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-amount">${fmt(e.amount)}</div>
+              <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
+            </div>
+          `).join('')}
+      </div>
+      <button class="week-add-btn">+ Añadir gasto</button>
+      <div class="week-expense-form hidden"></div>
+    </div>
+  `;
+}
+
+function showAddWeekForm() {
+  const form = document.getElementById('weekForm');
+  form.classList.remove('hidden');
+  // Fechas sugeridas: semana actual del mes seleccionado
+  const year = 2026;
+  const firstDay = new Date(year, currentMonthIdx, 1);
+  const lastDay = new Date(year, currentMonthIdx + 1, 0);
+  const suggestStart = toISO(firstDay);
+  const suggestEnd = toISO(new Date(firstDay.getTime() + 6 * 86400000));
+
+  form.innerHTML = `
+    <div class="add-week-form">
+      <div class="date-field">
+        <label>Fecha inicio</label>
+        <input type="date" id="newWeekStart" value="${suggestStart}" min="2026-01-01" max="2026-12-31">
+      </div>
+      <div class="date-field">
+        <label>Fecha fin</label>
+        <input type="date" id="newWeekEnd" value="${suggestEnd}" min="2026-01-01" max="2026-12-31">
+      </div>
+      <button class="btn btn-primary btn-sm" id="saveNewWeek">Añadir semana</button>
+      <button class="btn btn-sm" id="cancelNewWeek">Cancelar</button>
+    </div>
+  `;
+
+  document.getElementById('saveNewWeek').onclick = () => {
+    const start = document.getElementById('newWeekStart').value;
+    const end = document.getElementById('newWeekEnd').value;
+    if (!start || !end) { toast('Selecciona ambas fechas', true); return; }
+    if (start > end) { toast('Fecha inicio posterior a fin', true); return; }
+    getMonth().weeks.push({
+      id: genId(),
+      startDate: start,
+      endDate: end,
+      expenses: []
+    });
+    saveState();
+    form.classList.add('hidden');
+    form.innerHTML = '';
+    renderAll();
+    toast('Semana añadida');
+  };
+  document.getElementById('cancelNewWeek').onclick = () => {
+    form.classList.add('hidden');
+    form.innerHTML = '';
+  };
+}
+
+function deleteWeek(wid) {
+  if (!confirm('¿Eliminar esta semana y todos sus gastos?')) return;
+  const mo = getMonth();
+  mo.weeks = mo.weeks.filter(w => w.id !== wid);
+  saveState();
+  renderAll();
+  toast('Semana eliminada');
+}
+
+function showAddWeekExpenseForm(wid) {
+  const card = document.querySelector(`.week-card[data-id="${wid}"]`);
+  if (!card) return;
+  const form = card.querySelector('.week-expense-form');
+  form.classList.remove('hidden');
+  form.innerHTML = `
+    <div class="week-form">
+      <input type="text" placeholder="Concepto" class="wk-concept">
+      <input type="number" step="0.01" placeholder="Importe" class="wk-amount">
+      <button class="week-form-mini-btn wk-save">OK</button>
+      <button class="week-form-mini-btn cancel wk-cancel">✕</button>
+    </div>
+  `;
+  const conceptInput = form.querySelector('.wk-concept');
+  const amountInput = form.querySelector('.wk-amount');
+  conceptInput.focus();
+
+  const save = () => {
+    const c = conceptInput.value.trim();
+    const a = parseFloat(amountInput.value);
+    if (!c || isNaN(a)) { toast('Concepto e importe requeridos', true); return; }
+    const mo = getMonth();
+    const w = mo.weeks.find(x => x.id === wid);
+    if (!w) return;
+    w.expenses.push({ id: genId(), concept: c, amount: a });
+    saveState();
+    renderAll();
+    toast('Gasto añadido');
+  };
+
+  form.querySelector('.wk-save').onclick = save;
+  form.querySelector('.wk-cancel').onclick = () => {
+    form.classList.add('hidden');
+    form.innerHTML = '';
+  };
+  amountInput.onkeydown = (e) => { if (e.key === 'Enter') save(); };
+  conceptInput.onkeydown = (e) => { if (e.key === 'Enter') amountInput.focus(); };
+}
+
+function editWeekExpense(wid, eid, field) {
+  const mo = getMonth();
+  const w = mo.weeks.find(x => x.id === wid);
+  if (!w) return;
+  const exp = w.expenses.find(x => x.id === eid);
+  if (!exp) return;
+  const row = document.querySelector(`.week-card[data-id="${wid}"] .week-expense-row[data-eid="${eid}"]`);
+  if (!row) return;
+  const el = row.querySelector(field === 'concept' ? '[data-action="edit-concept"]' : '[data-action="edit-amount"]');
+  const original = el.textContent;
+  const current = exp[field];
+
+  if (field === 'concept') {
+    el.innerHTML = `<input type="text" class="inline-edit" value="${escapeHTML(current)}" id="wkEditInput">`;
+  } else {
+    el.innerHTML = `<input type="number" step="0.01" class="inline-edit inline-edit-amount" value="${current}" id="wkEditInput">`;
+  }
+
+  const input = document.getElementById('wkEditInput');
+  input.focus();
+  input.select();
+
+  const finish = (save) => {
+    if (save) {
+      const val = field === 'amount' ? parseFloat(input.value) : input.value.trim();
+      if (field === 'amount' && !isNaN(val)) {
+        exp.amount = val; saveState(); renderAll(); toast('Actualizado'); return;
+      } else if (field === 'concept' && val) {
+        exp.concept = val; saveState(); renderAll(); toast('Actualizado'); return;
+      }
+    }
+    el.textContent = original;
+  };
+
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.onblur = null; finish(false); }
+  };
+}
+
+function deleteWeekExpense(wid, eid) {
+  if (!confirm('¿Eliminar este gasto?')) return;
+  const mo = getMonth();
+  const w = mo.weeks.find(x => x.id === wid);
+  if (!w) return;
+  w.expenses = w.expenses.filter(e => e.id !== eid);
+  saveState();
+  renderAll();
+  toast('Eliminado');
+}
+
+/* ---------- UTILIDADES ---------- */
+
+function escapeHTML(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+let toastTimer;
+function toast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.className = 'toast' + (isError ? ' error' : '');
+  }, 2200);
+}
+
+/* ---------- EXPORT / IMPORT / RESET ---------- */
+
+function exportData() {
+  const data = JSON.stringify(state, null, 2);
+  const blob = new Blob([data], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.download = `presupuesto-2026-${stamp}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Datos exportados');
+}
+
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed.months) throw new Error('Archivo inválido');
+      state = ensureStateShape(parsed);
+      currentMonthIdx = state.currentMonth ?? 0;
+      saveState();
+      renderAll();
+      toast('Datos importados correctamente');
+    } catch (err) {
+      console.error(err);
+      toast('Error: archivo inválido', true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetMonth() {
+  if (!confirm(`¿Resetear el mes de ${MONTHS[currentMonthIdx]} a valores por defecto?\nSe perderán los cambios de este mes.`)) return;
+  state.months[MONTHS[currentMonthIdx]] = createDefaultMonth(currentMonthIdx);
+  saveState();
+  renderAll();
+  toast('Mes reseteado');
+}
+
+/* ---------- INIT ---------- */
+
+document.getElementById('addFixedBtn').onclick = showAddFixedForm;
+document.getElementById('addPuntualBtn').onclick = () => showAddPuntualForm('expense');
+document.getElementById('addIncomePuntualBtn').onclick = () => showAddPuntualForm('income');
+document.getElementById('addWeekBtn').onclick = showAddWeekForm;
+document.getElementById('exportBtn').onclick = exportData;
+document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = (e) => {
+  if (e.target.files[0]) importData(e.target.files[0]);
+  e.target.value = '';
+};
+document.getElementById('resetBtn').onclick = resetMonth;
+
+renderAll();
+</script>
+
 </body>
 </html>
