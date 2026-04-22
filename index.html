@@ -118,6 +118,44 @@
     margin-bottom: 14px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .section-action-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .section-action-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .previsto-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    background: rgba(96,165,250,0.15);
+    color: var(--info);
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .section-title {
@@ -146,6 +184,48 @@
   }
 
   .item-row:last-child { border-bottom: none; }
+
+  /* Drag & drop */
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-faint);
+    padding: 6px 4px;
+    user-select: none;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+  .drag-handle:hover { opacity: 1; color: var(--accent); }
+  .drag-handle:active { cursor: grabbing; }
+
+  .item-row.dragging,
+  .week-expense-row.dragging,
+  .week-card.dragging {
+    opacity: 0.4;
+  }
+
+  .item-row.drag-over-top {
+    border-top: 2px solid var(--accent);
+    margin-top: -1px;
+  }
+  .item-row.drag-over-bottom {
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: -1px;
+  }
+  .week-expense-row.drag-over-top {
+    border-top: 2px solid var(--accent);
+  }
+  .week-expense-row.drag-over-bottom {
+    border-bottom: 2px solid var(--accent);
+  }
+  .week-card.drag-over-left {
+    box-shadow: -3px 0 0 0 var(--accent);
+  }
+  .week-card.drag-over-right {
+    box-shadow: 3px 0 0 0 var(--accent);
+  }
 
   /* Checkbox de validación */
   .check-btn {
@@ -384,6 +464,16 @@
     margin-bottom: 10px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+
+  .week-header .drag-handle {
+    margin-right: 2px;
+  }
+
+  .week-header > .week-dates {
+    flex: 1;
+    min-width: 0;
   }
 
   .week-dates {
@@ -871,7 +961,10 @@
   <section class="section">
     <div class="section-header">
       <h2 class="section-title">📌 Gastos Fijos</h2>
-      <span class="section-total expense" id="fixedTotal">€0.00</span>
+      <div class="section-actions">
+        <button class="section-action-btn" id="copyFixedBtn" title="Copiar gastos fijos al resto de meses">📋 Copiar a otros meses</button>
+        <span class="section-total expense" id="fixedTotal">€0.00</span>
+      </div>
     </div>
     <div id="fixedContainer"></div>
     <div id="fixedForm" class="hidden"></div>
@@ -1211,10 +1304,35 @@ function calcPuntuales(monthIdx) {
   return state.months[MONTHS[monthIdx]].puntuales.reduce((s, p) => s + (p.amount || 0), 0);
 }
 
+function getCurrentRealMonth() {
+  const now = new Date();
+  // Si estamos en 2026, usar el mes actual real. Si estamos antes, todo es futuro.
+  // Si estamos después, todo es pasado.
+  if (now.getFullYear() < 2026) return -1; // todo futuro
+  if (now.getFullYear() > 2026) return 12; // todo pasado
+  return now.getMonth();
+}
+
 function calcWeeks(monthIdx) {
   const mo = state.months[MONTHS[monthIdx]];
-  return mo.weeks.reduce((s, w) =>
-    s + w.expenses.reduce((ss, e) => ss + (e.amount || 0), 0), 0);
+  const realMonth = getCurrentRealMonth();
+  const isFutureMonth = monthIdx > realMonth;
+
+  return mo.weeks.reduce((s, w) => {
+    const realSpent = w.expenses.reduce((ss, e) => ss + (e.amount || 0), 0);
+    if (isFutureMonth) {
+      // Mes futuro: usar presupuesto si está definido, si no, gasto real (probablemente 0)
+      const hasBudget = w.budget !== null && w.budget !== undefined && w.budget > 0;
+      return s + (hasBudget ? w.budget : realSpent);
+    }
+    // Mes actual o pasado: siempre gasto real
+    return s + realSpent;
+  }, 0);
+}
+
+// Suma solo lo realmente gastado (para mostrar en la semana misma)
+function calcWeekRealSpent(w) {
+  return w.expenses.reduce((s, e) => s + (e.amount || 0), 0);
 }
 
 function calcExpenses(monthIdx) {
@@ -1321,7 +1439,7 @@ function renderSummary() {
         <span class="summary-value">${fmt(fixed)}</span>
       </div>
       <div class="summary-row">
-        <span class="summary-label">Semanales</span>
+        <span class="summary-label">Semanales${currentMonthIdx > getCurrentRealMonth() ? '<span class="previsto-badge">previsto</span>' : ''}</span>
         <span class="summary-value">${fmt(weeksT)}</span>
       </div>
       <div class="summary-row">
@@ -1470,7 +1588,8 @@ function renderIncomePuntuales() {
     list.innerHTML = '<div class="empty-state">Sin ingresos puntuales este mes</div>';
   } else {
     list.innerHTML = mo.incomePuntuales.map(p => `
-      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}">
+      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
+        <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como cobrado'}">${p.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
         <div class="item-amount income" data-action="edit-amount">${fmt(p.amount)}</div>
@@ -1486,6 +1605,7 @@ function renderIncomePuntuales() {
     row.querySelector('[data-action="edit-concept"]').onclick = () => editIncomePuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editIncomePuntual(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deleteIncomePuntual(id);
+    enableDragSort(row, 'incomePuntuales');
   });
 }
 
@@ -1554,7 +1674,8 @@ function renderFixed() {
     cont.innerHTML = '<div class="empty-state">Sin gastos fijos este mes</div>';
   } else {
     cont.innerHTML = mo.fixed.map(f => `
-      <div class="item-row ${f.done ? 'done' : ''}" data-id="${f.id}">
+      <div class="item-row ${f.done ? 'done' : ''}" data-id="${f.id}" draggable="true">
+        <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${f.done ? 'checked' : ''}" data-action="toggle-done" title="${f.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${f.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(f.concept)}</div>
         <div class="item-amount expense" data-action="edit-amount">${fmt(f.amount)}</div>
@@ -1570,6 +1691,7 @@ function renderFixed() {
     row.querySelector('[data-action="edit-concept"]').onclick = () => editFixed(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editFixed(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deleteFixed(id);
+    enableDragSort(row, 'fixed');
   });
 }
 
@@ -1580,6 +1702,70 @@ function toggleFixedDone(id) {
   f.done = !f.done;
   saveState();
   renderAll();
+}
+
+/* ---------- COPIAR FIJOS A OTROS MESES ---------- */
+
+function copyFixedToOtherMonths() {
+  const sourceMonth = getMonth();
+  const sourceName = MONTHS[currentMonthIdx];
+
+  if (sourceMonth.fixed.length === 0) {
+    toast('No hay gastos fijos que copiar', true);
+    return;
+  }
+
+  // Opciones de destino
+  const options = [
+    { key: 'future', label: `A los meses POSTERIORES a ${sourceName}` },
+    { key: 'all', label: 'A TODOS los meses de 2026' },
+    { key: 'empty', label: 'Solo a meses SIN gastos fijos actuales' }
+  ];
+
+  const msg = `Copiar ${sourceMonth.fixed.length} gastos fijos de ${sourceName}:\n\n` +
+    options.map((o, i) => `${i + 1} - ${o.label}`).join('\n') +
+    '\n\nEscribe 1, 2 o 3 (o cancela):';
+
+  const choice = prompt(msg);
+  if (!choice) return;
+  const idx = parseInt(choice) - 1;
+  if (idx < 0 || idx >= options.length) {
+    toast('Opción no válida', true);
+    return;
+  }
+  const selected = options[idx].key;
+
+  // Pedir confirmación extra si va a sobrescribir
+  if (selected !== 'empty') {
+    const willOverwrite = MONTHS.some((_, i) => {
+      if (i === currentMonthIdx) return false;
+      if (selected === 'future' && i <= currentMonthIdx) return false;
+      return state.months[MONTHS[i]].fixed.length > 0;
+    });
+    if (willOverwrite) {
+      if (!confirm('Esto SOBRESCRIBIRÁ los gastos fijos existentes en los meses destino. ¿Continuar?')) return;
+    }
+  }
+
+  let copiedCount = 0;
+  MONTHS.forEach((m, i) => {
+    if (i === currentMonthIdx) return; // no tocar el mes origen
+    if (selected === 'future' && i <= currentMonthIdx) return;
+    if (selected === 'empty' && state.months[m].fixed.length > 0) return;
+
+    // Copia profunda con ids nuevos y done=false en cada mes
+    state.months[m].fixed = sourceMonth.fixed.map(f => ({
+      id: genId(),
+      concept: f.concept,
+      amount: f.amount,
+      done: false
+    }));
+    copiedCount++;
+  });
+
+  saveState();
+  renderAll();
+  toast(`Copiado a ${copiedCount} meses`);
 }
 
 function editFixed(id, field) {
@@ -1669,7 +1855,8 @@ function renderPuntuales() {
     cont.innerHTML = '<div class="empty-state">Sin gastos puntuales este mes</div>';
   } else {
     cont.innerHTML = mo.puntuales.map(p => `
-      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}">
+      <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
+        <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${p.done ? '✓' : ''}</button>
         <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
         <div class="item-amount expense" data-action="edit-amount">${fmt(p.amount)}</div>
@@ -1685,6 +1872,7 @@ function renderPuntuales() {
     row.querySelector('[data-action="edit-concept"]').onclick = () => editPuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editPuntual(id, 'amount');
     row.querySelector('[data-action="delete"]').onclick = () => deletePuntual(id);
+    enableDragSort(row, 'puntuales');
   });
 }
 
@@ -1812,7 +2000,9 @@ function renderWeeks() {
       row.querySelector('[data-action="edit-concept"]').onclick = () => editWeekExpense(w.id, eid, 'concept');
       row.querySelector('[data-action="edit-amount"]').onclick = () => editWeekExpense(w.id, eid, 'amount');
       row.querySelector('[data-action="delete"]').onclick = () => deleteWeekExpense(w.id, eid);
+      enableDragSort(row, 'weekExpenses', w.id);
     });
+    enableDragSort(card, 'weeks');
   });
 }
 
@@ -1898,8 +2088,9 @@ function renderWeekCard(w) {
   }
 
   return `
-    <div class="week-card" data-id="${w.id}">
+    <div class="week-card" data-id="${w.id}" draggable="true">
       <div class="week-header">
+        <span class="drag-handle" title="Arrastrar para reordenar semanas">⋮⋮</span>
         <div class="week-dates">${fmtDate(w.startDate)} — ${fmtDate(w.endDate)}</div>
         <div style="display:flex; gap:8px; align-items:center;">
           <span class="week-total">${fmt(total)}</span>
@@ -1911,7 +2102,8 @@ function renderWeekCard(w) {
         ${w.expenses.length === 0
           ? '<div style="color: var(--text-faint); font-size: 0.82rem; font-style: italic; padding: 4px 0;">Sin gastos aún</div>'
           : w.expenses.map(e => `
-            <div class="week-expense-row ${e.done ? 'done' : ''}" data-eid="${e.id}">
+            <div class="week-expense-row ${e.done ? 'done' : ''}" data-eid="${e.id}" draggable="true">
+              <span class="drag-handle" style="font-size:0.8rem; padding: 2px 4px;" title="Arrastrar">⋮⋮</span>
               <button class="check-btn check-btn-sm ${e.done ? 'checked' : ''}" data-action="toggle-done" title="${e.done ? 'Marcar pendiente' : 'Marcar realizado'}">${e.done ? '✓' : ''}</button>
               <div class="item-concept" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-concept">${escapeHTML(e.concept)}</div>
               <div class="item-amount expense" style="padding: 4px 6px; font-size: 0.85rem;" data-action="edit-amount">${fmt(e.amount)}</div>
@@ -2074,6 +2266,116 @@ function deleteWeekExpense(wid, eid) {
   toast('Eliminado');
 }
 
+/* ---------- DRAG & DROP ORDENACIÓN ---------- */
+
+let dragState = null;
+
+function enableDragSort(element, listKey, weekId = null) {
+  element.addEventListener('dragstart', (e) => {
+    dragState = {
+      id: element.dataset.id || element.dataset.eid,
+      listKey,
+      weekId,
+      element
+    };
+    element.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox necesita esto para iniciar el drag
+    try { e.dataTransfer.setData('text/plain', dragState.id); } catch (_) {}
+  });
+
+  element.addEventListener('dragend', () => {
+    element.classList.remove('dragging');
+    document.querySelectorAll('.drag-over-top, .drag-over-bottom, .drag-over-left, .drag-over-right')
+      .forEach(el => el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right'));
+    dragState = null;
+  });
+
+  element.addEventListener('dragover', (e) => {
+    if (!dragState) return;
+    // Solo permitir drop entre elementos del mismo tipo y en el mismo contexto
+    if (dragState.listKey !== listKey) return;
+    if (dragState.weekId !== weekId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    element.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right');
+    if (listKey === 'weeks') {
+      // Horizontal para tarjetas de semanas
+      const rect = element.getBoundingClientRect();
+      const mid = rect.left + rect.width / 2;
+      element.classList.add(e.clientX < mid ? 'drag-over-left' : 'drag-over-right');
+    } else {
+      const rect = element.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      element.classList.add(e.clientY < mid ? 'drag-over-top' : 'drag-over-bottom');
+    }
+  });
+
+  element.addEventListener('dragleave', () => {
+    element.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right');
+  });
+
+  element.addEventListener('drop', (e) => {
+    if (!dragState) return;
+    if (dragState.listKey !== listKey) return;
+    if (dragState.weekId !== weekId) return;
+    e.preventDefault();
+
+    const targetId = element.dataset.id || element.dataset.eid;
+    if (targetId === dragState.id) return;
+
+    // Determinar si va arriba/abajo (o izquierda/derecha para semanas)
+    let insertAfter;
+    if (listKey === 'weeks') {
+      const rect = element.getBoundingClientRect();
+      const mid = rect.left + rect.width / 2;
+      insertAfter = e.clientX >= mid;
+    } else {
+      const rect = element.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      insertAfter = e.clientY >= mid;
+    }
+
+    reorderItems(listKey, dragState.id, targetId, insertAfter, weekId);
+
+    element.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right');
+  });
+}
+
+function reorderItems(listKey, sourceId, targetId, insertAfter, weekId = null) {
+  const mo = getMonth();
+  let array;
+
+  if (listKey === 'fixed') array = mo.fixed;
+  else if (listKey === 'puntuales') array = mo.puntuales;
+  else if (listKey === 'incomePuntuales') array = mo.incomePuntuales;
+  else if (listKey === 'weeks') array = mo.weeks;
+  else if (listKey === 'weekExpenses') {
+    const w = mo.weeks.find(x => x.id === weekId);
+    if (!w) return;
+    array = w.expenses;
+  } else return;
+
+  const sourceIdx = array.findIndex(x => x.id === sourceId);
+  if (sourceIdx < 0) return;
+
+  const [moved] = array.splice(sourceIdx, 1);
+
+  let targetIdx = array.findIndex(x => x.id === targetId);
+  if (targetIdx < 0) {
+    // Restaurar si algo falla
+    array.splice(sourceIdx, 0, moved);
+    return;
+  }
+
+  if (insertAfter) targetIdx++;
+  array.splice(targetIdx, 0, moved);
+
+  saveState();
+  renderAll();
+}
+
 /* ---------- UTILIDADES ---------- */
 
 function escapeHTML(str) {
@@ -2148,6 +2450,7 @@ function resetMonth() {
 /* ---------- INIT ---------- */
 
 document.getElementById('addFixedBtn').onclick = showAddFixedForm;
+document.getElementById('copyFixedBtn').onclick = copyFixedToOtherMonths;
 document.getElementById('addPuntualBtn').onclick = () => showAddPuntualForm('expense');
 document.getElementById('addIncomePuntualBtn').onclick = () => showAddPuntualForm('income');
 document.getElementById('addWeekBtn').onclick = showAddWeekForm;
