@@ -74,6 +74,175 @@
     scrollbar-width: thin;
   }
 
+  /* === TABLA ANUAL === */
+  .annual-summary {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .annual-summary::-webkit-scrollbar { height: 6px; }
+  .annual-summary::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .annual-summary-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+
+  .annual-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(95px, 1fr));
+    gap: 4px;
+    min-width: 100%;
+  }
+
+  @media (max-width: 1200px) {
+    .annual-grid {
+      grid-template-columns: repeat(12, minmax(90px, 1fr));
+    }
+  }
+
+  @media (max-width: 600px) {
+    .annual-grid {
+      grid-template-columns: repeat(12, minmax(80px, 1fr));
+    }
+  }
+
+  .annual-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    background: var(--bg-elevated);
+    min-width: 0;
+  }
+
+  .annual-cell:hover {
+    border-color: var(--accent-dim);
+    transform: translateY(-1px);
+  }
+
+  .annual-cell.current {
+    border-color: var(--accent);
+    background: rgba(94,234,212,0.08);
+  }
+
+  .annual-cell-month {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+
+  .annual-cell-value {
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    letter-spacing: -0.02em;
+  }
+
+  .annual-cell-value.long {
+    font-size: 0.72rem;
+  }
+
+  .annual-cell-value.very-long {
+    font-size: 0.66rem;
+  }
+
+  .annual-cell-value.positive { color: var(--income); }
+  .annual-cell-value.negative { color: var(--expense); }
+  .annual-cell-value.neutral { color: var(--text-faint); }
+
+  .annual-cell-indicator {
+    font-size: 0.6rem;
+    color: var(--text-faint);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* === CAJA DE NOTAS GLOBAL === */
+  .notes-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+
+  .notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .notes-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .notes-saved {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    font-style: italic;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .notes-saved.visible { opacity: 1; }
+
+  .notes-textarea {
+    width: 100%;
+    min-height: 60px;
+    max-height: 200px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+  }
+
+  .notes-textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .notes-textarea::placeholder {
+    color: var(--text-faint);
+    font-style: italic;
+  }
+
   .month-nav::-webkit-scrollbar { height: 4px; }
   .month-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
@@ -932,8 +1101,27 @@
     <p>Aner & Iratxe · Bilbao</p>
   </header>
 
+  <!-- TABLA RESUMEN ANUAL -->
+  <div class="annual-summary">
+    <div class="annual-summary-title">Balance anual 2026</div>
+    <div class="annual-grid" id="annualGrid"></div>
+  </div>
+
   <!-- Navegación de meses -->
   <nav class="month-nav" id="monthNav"></nav>
+
+  <!-- CAJA DE NOTAS GLOBAL -->
+  <div class="notes-box">
+    <div class="notes-header">
+      <span class="notes-label">📝 Notas</span>
+      <span class="notes-saved" id="notesSaved">Guardado</span>
+    </div>
+    <textarea
+      class="notes-textarea"
+      id="notesTextarea"
+      placeholder="Anota aquí cualquier recordatorio: última operación revisada, cosas pendientes para la próxima vez, etc."
+    ></textarea>
+  </div>
 
   <!-- RESUMEN -->
   <div class="summary" id="summarySection"></div>
@@ -1108,7 +1296,7 @@ function saveCache() {
 }
 
 function createDefaultState() {
-  const s = { months: {}, currentMonth: new Date().getMonth() };
+  const s = { months: {}, currentMonth: new Date().getMonth(), notes: '' };
   MONTHS.forEach((m, i) => {
     s.months[m] = createDefaultMonth(i);
   });
@@ -1154,6 +1342,7 @@ function ensureStateShape(s) {
     }
   });
   if (s.currentMonth === undefined) s.currentMonth = new Date().getMonth();
+  if (typeof s.notes !== 'string') s.notes = '';
   return s;
 }
 
@@ -1359,13 +1548,60 @@ function fmtDate(iso) {
 /* ---------- RENDER ---------- */
 
 function renderAll() {
+  renderAnnualSummary();
   renderMonthNav();
+  renderNotesValue();
   renderSummary();
   renderNominas();
   renderIncomePuntuales();
   renderFixed();
   renderPuntuales();
   renderWeeks();
+}
+
+function renderAnnualSummary() {
+  const grid = document.getElementById('annualGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  MONTHS.forEach((m, i) => {
+    const balance = calcBalance(i);
+    const cls = balance > 0.01 ? 'positive' : (balance < -0.01 ? 'negative' : 'neutral');
+    const formatted = fmt(balance);
+    // Reducir tamaño de fuente si el número es muy largo
+    let sizeCls = '';
+    if (formatted.length >= 11) sizeCls = 'very-long';
+    else if (formatted.length >= 9) sizeCls = 'long';
+    const realMonth = getCurrentRealMonth();
+    let indicator = '';
+    if (i === realMonth) indicator = '• actual';
+    else if (i > realMonth) indicator = 'previsto';
+    // else pasado sin indicador
+
+    const cell = document.createElement('div');
+    cell.className = 'annual-cell' + (i === currentMonthIdx ? ' current' : '');
+    cell.innerHTML = `
+      <div class="annual-cell-month">${MONTHS_SHORT[i]}</div>
+      <div class="annual-cell-value ${cls} ${sizeCls}">${formatted}</div>
+      ${indicator ? `<div class="annual-cell-indicator">${indicator}</div>` : ''}
+    `;
+    cell.onclick = () => {
+      currentMonthIdx = i;
+      saveCache();
+      renderAll();
+      // Scrollear al resumen del mes para orientar al usuario
+      const summary = document.getElementById('summarySection');
+      if (summary) summary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    grid.appendChild(cell);
+  });
+}
+
+function renderNotesValue() {
+  const ta = document.getElementById('notesTextarea');
+  if (!ta) return;
+  // No sobrescribir si el usuario está escribiendo ahora
+  if (document.activeElement === ta) return;
+  ta.value = state.notes || '';
 }
 
 function renderMonthNav() {
@@ -2461,6 +2697,28 @@ document.getElementById('importFile').onchange = (e) => {
   e.target.value = '';
 };
 document.getElementById('resetBtn').onclick = resetMonth;
+
+// === NOTAS GLOBALES ===
+(() => {
+  const ta = document.getElementById('notesTextarea');
+  const savedLabel = document.getElementById('notesSaved');
+  let notesDebounce = null;
+  let savedLabelTimer = null;
+
+  ta.addEventListener('input', () => {
+    state.notes = ta.value;
+    clearTimeout(notesDebounce);
+    notesDebounce = setTimeout(() => {
+      saveState();
+      // Mostrar "Guardado" brevemente
+      savedLabel.classList.add('visible');
+      clearTimeout(savedLabelTimer);
+      savedLabelTimer = setTimeout(() => {
+        savedLabel.classList.remove('visible');
+      }, 1500);
+    }, 500);
+  });
+})();
 
 renderAll();
 setSyncStatus('connecting');
