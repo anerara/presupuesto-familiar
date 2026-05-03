@@ -1491,12 +1491,33 @@ function setupFirebaseListener() {
 
       const remote = snapshot.data();
       if (!remote || !remote.data) return;
-      if (remote.updatedBy === getClientId() && hasPending) return;
 
+      // Si el cambio fue hecho por este mismo cliente, solo actualizar el estado de sync visual.
+      // NO re-renderizar (mataríamos el foco si el usuario está escribiendo).
+      if (remote.updatedBy === getClientId()) {
+        firstLoadDone = true;
+        if (!hasPending) setSyncStatus('synced');
+        return;
+      }
+
+      // Cambio remoto desde otro dispositivo → aplicar estado y re-renderizar
       isRemoteUpdate = true;
       state = ensureStateShape(remote.data);
       saveCache();
-      renderAll();
+      // Si el usuario está escribiendo en algún textarea/input, evitar tirarle el foco.
+      // Re-render diferido y sin tocar el elemento activo si pertenece a un día.
+      const active = document.activeElement;
+      const isEditingDayField = active && (
+        active.classList?.contains('day-textarea') ||
+        active.classList?.contains('day-activity-text-input') ||
+        active.id === 'tripNotes'
+      );
+      if (isEditingDayField) {
+        // No re-renderizar mientras edita. Lo haremos al hacer blur o en próxima sync.
+        pendingRemoteRender = true;
+      } else {
+        renderAll();
+      }
       isRemoteUpdate = false;
       firstLoadDone = true;
 
@@ -1506,6 +1527,8 @@ function setupFirebaseListener() {
     (err) => { console.error(err); setSyncStatus('error'); }
   );
 }
+
+let pendingRemoteRender = false;
 
 window.addEventListener('online', () => {
   if (syncStatus === 'offline') setSyncStatus('syncing');
@@ -2596,6 +2619,16 @@ function renderAgenda() {
       clearTimeout(textDebounce);
       textDebounce = setTimeout(() => saveState(), 500);
     });
+    textarea.addEventListener('blur', () => {
+      // Forzar guardado inmediato al salir de la caja
+      clearTimeout(textDebounce);
+      saveState();
+      // Si llegó un cambio remoto mientras escribíamos, aplicarlo ahora
+      if (pendingRemoteRender) {
+        pendingRemoteRender = false;
+        renderAgenda();
+      }
+    });
 
     card.querySelector('[data-action="add-activity"]').onclick = () => addActivityToDay(dayISO);
     card.querySelector('[data-action="assign-expense"]').onclick = () => showAssignExpenseModal(dayISO);
@@ -2755,6 +2788,14 @@ function renderNotes() {
     trip.notes = ta.value;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => saveState(), 500);
+  });
+  ta.addEventListener('blur', () => {
+    clearTimeout(debounceTimer);
+    saveState();
+    if (pendingRemoteRender) {
+      pendingRemoteRender = false;
+      renderAll();
+    }
   });
 })();
 
