@@ -841,6 +841,273 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+
+  /* === AGENDA (cuadrícula días) === */
+  .agenda-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .day-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    transition: border-color 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .day-card:hover { border-color: var(--accent-dim); }
+
+  .day-card.today {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .day-card.past { opacity: 0.6; }
+
+  .day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .day-number {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  .day-date {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .day-date-weekday {
+    color: var(--text-dim);
+    margin-right: 4px;
+    text-transform: capitalize;
+  }
+
+  .day-today-badge {
+    font-size: 0.65rem;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .day-section-label {
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 4px 0 4px;
+    font-weight: 600;
+  }
+
+  .day-textarea {
+    width: 100%;
+    min-height: 50px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+  }
+  .day-textarea:focus { border-color: var(--accent); }
+  .day-textarea::placeholder {
+    color: var(--text-faint);
+    font-style: italic;
+    font-size: 0.8rem;
+  }
+
+  .day-activity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.85rem;
+  }
+
+  .day-activity-row:last-child { border-bottom: none; }
+
+  .day-activity-row.done .day-activity-text {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
+
+  .day-activity-text {
+    flex: 1;
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .day-activity-text:hover { background: var(--bg-input); }
+
+  .day-activity-delete {
+    background: transparent;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .day-activity-delete:hover { color: var(--expense); }
+
+  .day-add-activity {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .day-add-activity:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .day-expenses-list {
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+  }
+
+  .day-expense-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .day-expense-row:last-child { border-bottom: none; }
+
+  .day-expense-name {
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .day-expense-amount {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--expense);
+    flex-shrink: 0;
+  }
+
+  .day-expenses-total {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--expense);
+  }
+
+  .day-no-dates {
+    text-align: center;
+    padding: 30px 16px;
+    color: var(--text-faint);
+    font-style: italic;
+  }
+
+  .agenda-stats {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+
+  .agenda-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .agenda-stat-label {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .agenda-stat-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Modal de añadir actividad / asignar gasto */
+  .day-pick-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 10px 0;
+  }
+
+  .day-pick-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.88rem;
+  }
+  .day-pick-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-input);
+  }
+  .day-pick-item.selected {
+    border-color: var(--accent);
+    background: rgba(94,234,212,0.1);
+  }
+
+  .day-pick-item-name { flex: 1; min-width: 0; }
+  .day-pick-item-meta { color: var(--text-dim); font-size: 0.78rem; }
 </style>
 </head>
 <body>
@@ -882,6 +1149,7 @@
       <button class="tab active" data-tab="overview">📊 Resumen</button>
       <button class="tab" data-tab="expenses">💰 Gastos</button>
       <button class="tab" data-tab="checklist">✅ Trámites</button>
+      <button class="tab" data-tab="agenda">🗓️ Agenda</button>
       <button class="tab" data-tab="notes">📝 Notas</button>
     </div>
 
@@ -925,6 +1193,9 @@
         </div>
       </div>
     </div>
+
+    <!-- TAB: Agenda -->
+    <div class="tab-content" data-tab-content="agenda" id="tabAgenda"></div>
 
     <!-- TAB: Notes -->
     <div class="tab-content" data-tab-content="notes">
@@ -1123,6 +1394,7 @@ function ensureStateShape(s) {
       if (!e.id) e.id = genId();
       if (e.done === undefined) e.done = false;
       if (!e.categoryId) e.categoryId = 'other';
+      if (e.dayDate === undefined) e.dayDate = ''; // YYYY-MM-DD opcional
     });
     if (!Array.isArray(t.checklist)) t.checklist = [];
     t.checklist.forEach(c => {
@@ -1131,6 +1403,22 @@ function ensureStateShape(s) {
       if (!c.deadline) c.deadline = '';
     });
     if (typeof t.notes !== 'string') t.notes = '';
+    // Agenda: objeto con clave YYYY-MM-DD → { text: '', activities: [{id, text, done}] }
+    if (typeof t.agenda !== 'object' || t.agenda === null || Array.isArray(t.agenda)) t.agenda = {};
+    Object.keys(t.agenda).forEach(k => {
+      const day = t.agenda[k];
+      if (typeof day !== 'object' || day === null) {
+        t.agenda[k] = { text: '', activities: [] };
+        return;
+      }
+      if (typeof day.text !== 'string') day.text = '';
+      if (!Array.isArray(day.activities)) day.activities = [];
+      day.activities.forEach(a => {
+        if (!a.id) a.id = genId();
+        if (a.done === undefined) a.done = false;
+        if (typeof a.text !== 'string') a.text = '';
+      });
+    });
     if (!t.createdAt) t.createdAt = Date.now();
   });
   return s;
@@ -1473,6 +1761,7 @@ function showAddTripModal(tripId = null) {
             }))
           : [],
         notes: '',
+        agenda: {},
         createdAt: Date.now()
       };
       state.trips.push(newTrip);
@@ -1537,6 +1826,7 @@ function renderTab(tabName) {
   if (tabName === 'overview') renderOverview();
   else if (tabName === 'expenses') renderExpenses();
   else if (tabName === 'checklist') renderChecklist();
+  else if (tabName === 'agenda') renderAgenda();
   else if (tabName === 'notes') renderNotes();
 }
 
@@ -2137,7 +2427,317 @@ function showLoadTemplateModal() {
   };
 }
 
-/* ---------- TAB: NOTES ---------- */
+/* ---------- TAB: AGENDA ---------- */
+
+// Genera la lista de fechas del viaje (YYYY-MM-DD) en orden
+function getTripDays(trip) {
+  if (!trip.startDate || !trip.endDate) return [];
+  const days = [];
+  const start = new Date(trip.startDate + 'T00:00:00');
+  const end = new Date(trip.endDate + 'T00:00:00');
+  if (end < start) return [];
+  let cur = new Date(start);
+  while (cur <= end) {
+    days.push(toISO(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+function toISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function fmtDayLong(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const wd = d.toLocaleDateString('es-ES', { weekday: 'short' });
+  const day = d.getDate();
+  const mo = d.toLocaleDateString('es-ES', { month: 'short' });
+  return { weekday: wd, dayMonth: `${day} ${mo}` };
+}
+
+function ensureDayEntry(trip, dayISO) {
+  if (!trip.agenda[dayISO]) {
+    trip.agenda[dayISO] = { text: '', activities: [] };
+  }
+  return trip.agenda[dayISO];
+}
+
+function getExpensesForDay(trip, dayISO) {
+  return trip.expenses.filter(e => e.dayDate === dayISO);
+}
+
+function calcDayTotal(trip, dayISO) {
+  return getExpensesForDay(trip, dayISO).reduce((s, e) => s + (e.amount || 0), 0);
+}
+
+function renderAgenda() {
+  const trip = getCurrentTrip();
+  if (!trip) return;
+  const cont = document.getElementById('tabAgenda');
+  const days = getTripDays(trip);
+
+  if (days.length === 0) {
+    cont.innerHTML = `
+      <div class="section">
+        <div class="day-no-dates">
+          Para ver la agenda necesitas establecer las fechas del viaje.<br>
+          Pulsa <strong>✏️ Editar</strong> arriba y pon fecha de inicio y fin.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Stats
+  const todayISO = toISO(new Date());
+  const totalDays = days.length;
+  const totalActivities = days.reduce((s, d) => s + (trip.agenda[d]?.activities.length || 0), 0);
+  const doneActivities = days.reduce((s, d) => s + (trip.agenda[d]?.activities.filter(a => a.done).length || 0), 0);
+  const assignedExpenses = trip.expenses.filter(e => e.dayDate).length;
+  const totalExpenses = trip.expenses.length;
+
+  cont.innerHTML = `
+    <div class="agenda-stats">
+      <div class="agenda-stat-item">
+        <span class="agenda-stat-label">Duración</span>
+        <span class="agenda-stat-value">${totalDays} ${totalDays === 1 ? 'día' : 'días'}</span>
+      </div>
+      <div class="agenda-stat-item">
+        <span class="agenda-stat-label">Actividades</span>
+        <span class="agenda-stat-value">${doneActivities}/${totalActivities}</span>
+      </div>
+      <div class="agenda-stat-item">
+        <span class="agenda-stat-label">Gastos asignados</span>
+        <span class="agenda-stat-value">${assignedExpenses}/${totalExpenses}</span>
+      </div>
+    </div>
+    <div class="agenda-grid" id="agendaGrid"></div>
+  `;
+
+  const grid = document.getElementById('agendaGrid');
+  days.forEach((dayISO, idx) => {
+    const day = ensureDayEntry(trip, dayISO);
+    const isToday = dayISO === todayISO;
+    const isPast = dayISO < todayISO;
+    const dayExpenses = getExpensesForDay(trip, dayISO);
+    const dayTotal = calcDayTotal(trip, dayISO);
+    const dt = fmtDayLong(dayISO);
+
+    const card = document.createElement('div');
+    card.className = 'day-card' + (isToday ? ' today' : '') + (isPast && !isToday ? ' past' : '');
+    card.dataset.day = dayISO;
+
+    card.innerHTML = `
+      <div class="day-header">
+        <div>
+          <div class="day-number">Día ${idx + 1}</div>
+          <div class="day-date">
+            <span class="day-date-weekday">${dt.weekday}</span>${dt.dayMonth}
+          </div>
+        </div>
+        ${isToday ? '<div class="day-today-badge">Hoy</div>' : ''}
+      </div>
+
+      <textarea
+        class="day-textarea"
+        data-action="edit-text"
+        placeholder="Notas del día (lugares, horarios, comidas...)"
+      >${escapeHTML(day.text)}</textarea>
+
+      <div>
+        <div class="day-section-label">Actividades</div>
+        <div class="day-activities-list" data-day="${dayISO}">
+          ${day.activities.length === 0
+            ? '<div style="color:var(--text-faint); font-size:0.78rem; padding:4px 0; font-style:italic;">Sin actividades</div>'
+            : day.activities.map(a => `
+              <div class="day-activity-row ${a.done ? 'done' : ''}" data-aid="${a.id}">
+                <button class="check-btn check-btn-sm ${a.done ? 'checked' : ''}" data-action="toggle-act" title="Marcar como hecho">${a.done ? '✓' : ''}</button>
+                <span class="day-activity-text" data-action="edit-act">${escapeHTML(a.text)}</span>
+                <button class="day-activity-delete" data-action="del-act" title="Eliminar">✕</button>
+              </div>
+            `).join('')}
+        </div>
+        <button class="day-add-activity" data-action="add-activity">+ Añadir actividad</button>
+      </div>
+
+      ${dayExpenses.length > 0 ? `
+        <div>
+          <div class="day-section-label">💰 Gastos del día</div>
+          <div class="day-expenses-list">
+            ${dayExpenses.map(e => {
+              const cat = trip.categories.find(c => c.id === e.categoryId) || {icon:'❓'};
+              return `
+                <div class="day-expense-row">
+                  <span class="day-expense-name">${cat.icon} ${escapeHTML(e.concept)}</span>
+                  <span class="day-expense-amount">${fmt(e.amount)}</span>
+                </div>
+              `;
+            }).join('')}
+            <div class="day-expenses-total">
+              <span>Total</span>
+              <span>${fmt(dayTotal)}</span>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      <button class="day-add-activity" data-action="assign-expense" style="margin-top:auto;">+ Asignar gasto a este día</button>
+    `;
+
+    // Listeners de la tarjeta
+    const textarea = card.querySelector('[data-action="edit-text"]');
+    let textDebounce = null;
+    textarea.addEventListener('input', () => {
+      day.text = textarea.value;
+      clearTimeout(textDebounce);
+      textDebounce = setTimeout(() => saveState(), 500);
+    });
+
+    card.querySelector('[data-action="add-activity"]').onclick = () => addActivityToDay(dayISO);
+    card.querySelector('[data-action="assign-expense"]').onclick = () => showAssignExpenseModal(dayISO);
+
+    card.querySelectorAll('.day-activity-row').forEach(row => {
+      const aid = row.dataset.aid;
+      row.querySelector('[data-action="toggle-act"]').onclick = () => toggleActivity(dayISO, aid);
+      row.querySelector('[data-action="edit-act"]').onclick = () => editActivity(dayISO, aid);
+      row.querySelector('[data-action="del-act"]').onclick = () => deleteActivity(dayISO, aid);
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+function addActivityToDay(dayISO) {
+  const text = prompt('Nueva actividad:');
+  if (!text || !text.trim()) return;
+  const trip = getCurrentTrip();
+  const day = ensureDayEntry(trip, dayISO);
+  day.activities.push({
+    id: genId(),
+    text: text.trim(),
+    done: false
+  });
+  saveState();
+  renderAgenda();
+}
+
+function toggleActivity(dayISO, aid) {
+  const trip = getCurrentTrip();
+  const day = trip.agenda[dayISO];
+  if (!day) return;
+  const a = day.activities.find(x => x.id === aid);
+  if (!a) return;
+  a.done = !a.done;
+  saveState();
+  renderAgenda();
+}
+
+function editActivity(dayISO, aid) {
+  const trip = getCurrentTrip();
+  const day = trip.agenda[dayISO];
+  if (!day) return;
+  const a = day.activities.find(x => x.id === aid);
+  if (!a) return;
+  const newText = prompt('Editar actividad:', a.text);
+  if (newText === null) return;
+  if (!newText.trim()) {
+    if (!confirm('¿Eliminar esta actividad?')) return;
+    day.activities = day.activities.filter(x => x.id !== aid);
+  } else {
+    a.text = newText.trim();
+  }
+  saveState();
+  renderAgenda();
+}
+
+function deleteActivity(dayISO, aid) {
+  const trip = getCurrentTrip();
+  const day = trip.agenda[dayISO];
+  if (!day) return;
+  if (!confirm('¿Eliminar esta actividad?')) return;
+  day.activities = day.activities.filter(x => x.id !== aid);
+  saveState();
+  renderAgenda();
+}
+
+function showAssignExpenseModal(dayISO) {
+  const trip = getCurrentTrip();
+  const dt = fmtDayLong(dayISO);
+  // Gastos no asignados a ningún día + los ya asignados a este día (para poder desasignar)
+  const candidates = trip.expenses.filter(e => !e.dayDate || e.dayDate === dayISO);
+
+  const html = `
+    <h2>Asignar gasto a ${dt.weekday} ${dt.dayMonth}</h2>
+    <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:14px;">
+      Marca los gastos que pertenezcan a este día. Los gastos sin día asignado aparecen abajo.
+    </p>
+
+    ${candidates.length === 0 ? `
+      <div class="empty-state">
+        No hay gastos para asignar. Añade gastos primero en la pestaña "Gastos".
+      </div>
+    ` : `
+      <div class="day-pick-list">
+        ${candidates.map(e => {
+          const cat = trip.categories.find(c => c.id === e.categoryId) || {icon:'❓', name:''};
+          const assigned = e.dayDate === dayISO;
+          return `
+            <div class="day-pick-item ${assigned ? 'selected' : ''}" data-eid="${e.id}">
+              <input type="checkbox" ${assigned ? 'checked' : ''} style="cursor:pointer;">
+              <div class="day-pick-item-name">
+                <div>${cat.icon} ${escapeHTML(e.concept)}</div>
+                <div class="day-pick-item-meta">${escapeHTML(cat.name)}</div>
+              </div>
+              <div class="day-expense-amount">${fmt(e.amount)}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `}
+
+    <div style="margin-top:14px; padding:10px; background:var(--bg-elevated); border-radius:var(--radius-sm); font-size:0.85rem; color:var(--text-dim);">
+      💡 Si necesitas añadir un gasto nuevo, ciérralo y ve a la pestaña "Gastos".
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" data-action="cancel">Cancelar</button>
+      <button class="btn btn-primary" data-action="apply">Aplicar</button>
+    </div>
+  `;
+
+  openModal(html);
+
+  // Toggle visual
+  document.querySelectorAll('.day-pick-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const cb = item.querySelector('input[type="checkbox"]');
+      cb.checked = !cb.checked;
+      item.classList.toggle('selected', cb.checked);
+    });
+  });
+
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
+  document.querySelector('[data-action="apply"]').onclick = () => {
+    document.querySelectorAll('.day-pick-item').forEach(item => {
+      const eid = item.dataset.eid;
+      const checked = item.querySelector('input[type="checkbox"]').checked;
+      const exp = trip.expenses.find(x => x.id === eid);
+      if (!exp) return;
+      if (checked) exp.dayDate = dayISO;
+      else if (exp.dayDate === dayISO) exp.dayDate = '';
+    });
+    saveState();
+    closeModal();
+    renderAgenda();
+    toast('Gastos actualizados');
+  };
+}
+
+
 
 function renderNotes() {
   const trip = getCurrentTrip();
