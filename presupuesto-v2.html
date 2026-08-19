@@ -1391,6 +1391,20 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Marcadores de origen del ítem (manual / importado / diff) */
+  .src-mark {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.72rem;
+    opacity: 0.7;
+    vertical-align: middle;
+    cursor: help;
+  }
+  .src-mark:hover { opacity: 1; }
+  .src-mark.manual { filter: grayscale(0.3); }
+  .src-mark.linked { filter: hue-rotate(-20deg); }
+  .src-mark.diff { color: var(--warning); font-size: 0.85rem; }
+
   /* Indicador de sincronización */
   .sync-indicator {
     position: fixed;
@@ -1577,6 +1591,8 @@
     <button class="btn" id="exportBtn">📥 Exportar datos</button>
     <button class="btn" id="importBtn">📤 Importar datos</button>
     <input type="file" id="importFile" accept=".json" class="hidden">
+    <button class="btn" id="importV1Btn" title="Importa el JSON de la app v1 sin borrar los movimientos importados">🔄 Fusionar JSON de v1</button>
+    <input type="file" id="importV1File" accept=".json" class="hidden">
     <button class="btn" id="resetBtn">🗑️ Resetear mes</button>
   </div>
 
@@ -1690,35 +1706,9 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];// Gastos fijos por defecto (solo se aplican al inicializar un mes nuevo)
-const DEFAULT_FIXED = [
-  {concept: 'Hipoteca', amount: 650},
-  {concept: 'Comunidad', amount: 45},
-  {concept: 'IBI', amount: 35},
-  {concept: 'Seguro hogar', amount: 28},
-  {concept: 'Luz', amount: 95},
-  {concept: 'Gas', amount: 65},
-  {concept: 'Agua', amount: 35},
-  {concept: 'Internet + móvil', amount: 75},
-  {concept: 'Móvil Aner', amount: 18},
-  {concept: 'Móvil Iratxe', amount: 18},
-  {concept: 'Netflix', amount: 13.99},
-  {concept: 'Spotify', amount: 11.99},
-  {concept: 'Amazon Prime', amount: 5.99},
-  {concept: 'Gimnasio Aner', amount: 35},
-  {concept: 'Gimnasio Iratxe', amount: 35},
-  {concept: 'Seguro coche', amount: 55},
-  {concept: 'Gasolina', amount: 120},
-  {concept: 'ITV / Mantenimiento', amount: 15},
-  {concept: 'Parking', amount: 85},
-  {concept: 'Compra semanal (media)', amount: 400},
-  {concept: 'Seguro médico', amount: 95},
-  {concept: 'Farmacia', amount: 25},
-  {concept: 'Ahorro automático', amount: 300},
-  {concept: 'Plan pensiones', amount: 100},
-  {concept: 'Donaciones', amount: 20},
-  {concept: 'Suscripciones varias', amount: 10.53}
-];
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];// Gastos fijos por defecto - vacío en v2 para que el usuario los cargue con la fusión de v1
+// o los cree manualmente. Los 26 defaults antiguos ya no se cargan automáticamente.
+const DEFAULT_FIXED = [];
 
 const DEFAULT_NOMINAS = {
   aner: {concept: 'Nómina Aner', amount: 1614.98},
@@ -2476,8 +2466,8 @@ function renderIncomePuntuales() {
       <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
         <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como cobrado'}">${p.done ? '✓' : ''}</button>
-        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
-        <div class="item-amount income" data-action="edit-amount">${fmt(p.amount)}</div>
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}${sourceIcon(p)}</div>
+        <div class="item-amount income" data-action="edit-amount">${fmt(p.amount)}${previewDiffIcon(p)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
       </div>
     `).join('');
@@ -2562,8 +2552,8 @@ function renderFixed() {
       <div class="item-row ${f.done ? 'done' : ''}" data-id="${f.id}" draggable="true">
         <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${f.done ? 'checked' : ''}" data-action="toggle-done" title="${f.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${f.done ? '✓' : ''}</button>
-        <div class="item-concept" data-action="edit-concept">${escapeHTML(f.concept)}</div>
-        <div class="item-amount expense" data-action="edit-amount">${fmt(f.amount)}</div>
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(f.concept)}${sourceIcon(f)}</div>
+        <div class="item-amount expense" data-action="edit-amount">${fmt(f.amount)}${previewDiffIcon(f)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
       </div>
     `).join('');
@@ -2578,6 +2568,23 @@ function renderFixed() {
     row.querySelector('[data-action="delete"]').onclick = () => deleteFixed(id);
     enableDragSort(row, 'fixed');
   });
+}
+
+// Ícono de fuente: 📝 manual · 🔗 real importado
+function sourceIcon(item) {
+  if (!item || !item.source) return '';
+  if (item.source === 'manual') return ' <span class="src-mark manual" title="Añadido a mano">📝</span>';
+  if (item.source === 'imported') return ' <span class="src-mark linked" title="Enlazado con movimiento importado">🔗</span>';
+  return '';
+}
+
+// Ícono de "importe modificado" cuando el real difiere de lo previsto originalmente
+function previewDiffIcon(item) {
+  if (!item || item.previewAmount === undefined || item.previewAmount === null) return '';
+  const diff = item.amount - item.previewAmount;
+  if (Math.abs(diff) < 0.01) return '';
+  const sign = diff > 0 ? '+' : '';
+  return ` <span class="src-mark diff" title="Importe previsto: ${fmt(item.previewAmount)} · Diferencia: ${sign}${fmt(diff)}">⚠️</span>`;
 }
 
 function toggleFixedDone(id) {
@@ -2716,7 +2723,7 @@ function showAddFixedForm() {
     const c = document.getElementById('newFixedConcept').value.trim();
     const a = parseFloat(document.getElementById('newFixedAmount').value);
     if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
-    getMonth().fixed.push({ id: genId(), concept: c, amount: a, done: false });
+    getMonth().fixed.push({ id: genId(), concept: c, amount: a, done: false, source: 'manual' });
     saveState();
     form.classList.add('hidden');
     renderAll();
@@ -2743,8 +2750,8 @@ function renderPuntuales() {
       <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
         <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${p.done ? '✓' : ''}</button>
-        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}</div>
-        <div class="item-amount expense" data-action="edit-amount">${fmt(p.amount)}</div>
+        <div class="item-concept" data-action="edit-concept">${escapeHTML(p.concept)}${sourceIcon(p)}</div>
+        <div class="item-amount expense" data-action="edit-amount">${fmt(p.amount)}${previewDiffIcon(p)}</div>
         <button class="item-delete" data-action="delete" title="Eliminar">✕</button>
       </div>
     `).join('');
@@ -2838,9 +2845,9 @@ function showAddPuntualForm(type) {
     if (!c || isNaN(a)) { toast('Rellena concepto e importe', true); return; }
     const mo = getMonth();
     if (type === 'income') {
-      mo.incomePuntuales.push({ id: genId(), concept: c, amount: a, done: false });
+      mo.incomePuntuales.push({ id: genId(), concept: c, amount: a, done: false, source: 'manual' });
     } else {
-      mo.puntuales.push({ id: genId(), concept: c, amount: a, done: false });
+      mo.puntuales.push({ id: genId(), concept: c, amount: a, done: false, source: 'manual' });
     }
     saveState();
     form.classList.add('hidden');
@@ -3094,7 +3101,7 @@ function showAddWeekExpenseForm(wid) {
     const mo = getMonth();
     const w = mo.weeks.find(x => x.id === wid);
     if (!w) return;
-    w.expenses.push({ id: genId(), concept: c, amount: a, done: false });
+    w.expenses.push({ id: genId(), concept: c, amount: a, done: false, source: 'manual' });
     saveState();
     renderAll();
     toast('Gasto añadido');
@@ -3638,36 +3645,67 @@ function linkMovementToBudget(mov) {
   if (t.type === 'fixed') {
     let item = month.fixed.find(f => f.concept.toLowerCase() === (t.concept || '').toLowerCase());
     if (!item && t.concept) {
-      item = { id: genId(), concept: t.concept, amount: absAmount, done: false };
+      item = { id: genId(), concept: t.concept, amount: absAmount, done: false, source: 'imported' };
       month.fixed.push(item);
     }
     if (item) {
+      // Detectar si estamos cambiando un importe previsto
+      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
+      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
+        item.previewAmount = previewAmount; // guardamos el previsto original
+      }
       item.amount = absAmount;
       item.done = true;
       item.linkedMovId = mov.id;
+      item.source = 'imported';
     }
   } else if (t.type === 'puntual_gasto') {
+    // Buscar item con este linkedMovId, o item existente con mismo concepto sin enlazar
     let item = month.puntuales.find(p => p.linkedMovId === mov.id);
+    if (!item && t.concept) {
+      item = month.puntuales.find(p =>
+        p.concept.toLowerCase() === t.concept.toLowerCase() && !p.linkedMovId);
+    }
     if (!item) {
-      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id };
+      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id, source: 'imported' };
       month.puntuales.push(item);
     } else {
+      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
+      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
+        item.previewAmount = previewAmount;
+      }
       item.amount = absAmount;
       item.done = true;
+      item.linkedMovId = mov.id;
+      item.source = 'imported';
     }
   } else if (t.type === 'puntual_ingreso') {
     let item = month.incomePuntuales.find(p => p.linkedMovId === mov.id);
+    if (!item && t.concept) {
+      item = month.incomePuntuales.find(p =>
+        p.concept.toLowerCase() === t.concept.toLowerCase() && !p.linkedMovId);
+    }
     if (!item) {
-      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id };
+      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id, source: 'imported' };
       month.incomePuntuales.push(item);
     } else {
+      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
+      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
+        item.previewAmount = previewAmount;
+      }
       item.amount = absAmount;
       item.done = true;
+      item.linkedMovId = mov.id;
+      item.source = 'imported';
     }
   } else if (t.type === 'nomina_aner') {
     month.nominaAner.amount = absAmount;
+    month.nominaAner.source = 'imported';
+    month.nominaAner.linkedMovId = mov.id;
   } else if (t.type === 'nomina_iratxe') {
     month.nominaIratxe.amount = absAmount;
+    month.nominaIratxe.source = 'imported';
+    month.nominaIratxe.linkedMovId = mov.id;
   }
 }
 
@@ -3794,18 +3832,73 @@ function showAssignModal(movId) {
   const monthKey = MONTHS[new Date(mov.date + 'T00:00:00').getMonth()];
   const month = state.months[monthKey];
   const isIncome = mov.amount > 0;
+
+  // === CATÁLOGO GLOBAL agregado de todos los meses ===
+  // Fijos: conceptos únicos y su importe más frecuente
+  const fixedSet = new Map(); // concept → { count, lastAmount }
+  const puntGastoSet = new Map();
+  const puntIngresoSet = new Map();
+  MONTHS.forEach(mk => {
+    const m = state.months[mk];
+    if (!m) return;
+    (m.fixed || []).forEach(f => {
+      const cur = fixedSet.get(f.concept) || { count: 0, lastAmount: f.amount };
+      cur.count++;
+      cur.lastAmount = f.amount;
+      fixedSet.set(f.concept, cur);
+    });
+    (m.puntuales || []).forEach(p => {
+      const cur = puntGastoSet.get(p.concept) || { count: 0, lastAmount: p.amount };
+      cur.count++;
+      cur.lastAmount = p.amount;
+      puntGastoSet.set(p.concept, cur);
+    });
+    (m.incomePuntuales || []).forEach(p => {
+      const cur = puntIngresoSet.get(p.concept) || { count: 0, lastAmount: p.amount };
+      cur.count++;
+      cur.lastAmount = p.amount;
+      puntIngresoSet.set(p.concept, cur);
+    });
+  });
+
   const options = [];
   options.push({ value: 'unassign', label: '— Sin asignar —' });
   options.push({ value: 'ignore', label: '💤 Ignorar (no afecta al balance)' });
+  // Nóminas
+  options.push({ value: '__group_nom', label: '─── 💰 Nóminas ───', disabled: true });
   options.push({ value: 'nomina_aner', label: '💰 Nómina Aner' });
   options.push({ value: 'nomina_iratxe', label: '💰 Nómina Iratxe' });
+
   if (!isIncome) {
-    for (const f of (month?.fixed || [])) {
-      options.push({ value: 'fixed:' + f.concept, label: `📌 Fijo · ${f.concept} (${fmt(f.amount)})` });
+    // Gastos fijos ordenados por frecuencia (los más habituales arriba)
+    const fijosArr = [...fixedSet.entries()].sort((a, b) => b[1].count - a[1].count);
+    if (fijosArr.length > 0) {
+      options.push({ value: '__group_fix', label: '─── 📌 Gastos fijos ───', disabled: true });
+      fijosArr.forEach(([concept, meta]) => {
+        options.push({ value: 'fixed:' + concept, label: `📌 ${concept} (${fmt(meta.lastAmount)})` });
+      });
     }
+    // Puntuales conocidos
+    const puntArr = [...puntGastoSet.entries()].sort((a, b) => b[1].count - a[1].count);
+    if (puntArr.length > 0) {
+      options.push({ value: '__group_punt', label: '─── 🎯 Puntuales conocidos ───', disabled: true });
+      puntArr.slice(0, 30).forEach(([concept, meta]) => {
+        options.push({ value: 'puntual_existing:' + concept, label: `🎯 ${concept} (${fmt(meta.lastAmount)})` });
+      });
+    }
+    options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_gasto', label: '➕ Nuevo gasto puntual…' });
     options.push({ value: 'new_fixed', label: '➕ Nuevo gasto fijo…' });
   } else {
+    // Ingresos puntuales conocidos
+    const ipuntArr = [...puntIngresoSet.entries()].sort((a, b) => b[1].count - a[1].count);
+    if (ipuntArr.length > 0) {
+      options.push({ value: '__group_ipunt', label: '─── 💚 Ingresos puntuales conocidos ───', disabled: true });
+      ipuntArr.slice(0, 30).forEach(([concept, meta]) => {
+        options.push({ value: 'ingreso_existing:' + concept, label: `💚 ${concept} (${fmt(meta.lastAmount)})` });
+      });
+    }
+    options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_ingreso', label: '➕ Nuevo ingreso puntual…' });
   }
 
@@ -3816,8 +3909,8 @@ function showAssignModal(movId) {
     if (t.type === 'nomina_aner') currentVal = 'nomina_aner';
     else if (t.type === 'nomina_iratxe') currentVal = 'nomina_iratxe';
     else if (t.type === 'fixed') currentVal = 'fixed:' + t.concept;
-    else if (t.type === 'puntual_gasto') currentVal = 'new_puntual_gasto';
-    else if (t.type === 'puntual_ingreso') currentVal = 'new_puntual_ingreso';
+    else if (t.type === 'puntual_gasto') currentVal = 'puntual_existing:' + t.concept;
+    else if (t.type === 'puntual_ingreso') currentVal = 'ingreso_existing:' + t.concept;
   }
 
   openModal(`
@@ -3856,6 +3949,15 @@ function showAssignModal(movId) {
   const words = mov.concept.split(/\s+/).filter(w => w.length > 2);
   ruleInput.value = words.slice(0, 2).join(' ');
 
+  // Marcar las opciones de encabezado (─── ... ───) como disabled visualmente
+  Array.from(sel.options).forEach(opt => {
+    if (opt.value.startsWith('__group_')) {
+      opt.disabled = true;
+      opt.style.color = 'var(--text-faint)';
+      opt.style.fontStyle = 'italic';
+    }
+  });
+
   function refreshConceptVisibility() {
     const v = sel.value;
     const show = (v === 'new_puntual_gasto' || v === 'new_puntual_ingreso' || v === 'new_fixed');
@@ -3871,6 +3973,8 @@ function showAssignModal(movId) {
     const concept = conceptInput.value.trim();
     let target = null;
 
+    if (v.startsWith('__group_')) { toast('Elige un concepto, no un encabezado', true); return; }
+
     if (v === 'unassign') {
       unlinkMovementFromBudget(mov);
       mov.assignedTo = null;
@@ -3881,6 +3985,8 @@ function showAssignModal(movId) {
     } else if (v === 'nomina_aner') target = { type: 'nomina_aner' };
     else if (v === 'nomina_iratxe') target = { type: 'nomina_iratxe' };
     else if (v.startsWith('fixed:')) target = { type: 'fixed', concept: v.substring(6) };
+    else if (v.startsWith('puntual_existing:')) target = { type: 'puntual_gasto', concept: v.substring('puntual_existing:'.length) };
+    else if (v.startsWith('ingreso_existing:')) target = { type: 'puntual_ingreso', concept: v.substring('ingreso_existing:'.length) };
     else if (v === 'new_puntual_gasto') {
       if (!concept) { toast('Escribe un concepto', true); return; }
       target = { type: 'puntual_gasto', concept };
@@ -3896,9 +4002,23 @@ function showAssignModal(movId) {
 
     const learn = document.getElementById('learnRuleChk').checked;
     const pattern = ruleInput.value.trim();
+    let retroCount = 0;
     if (learn && pattern && target) {
       const exists = state.rules.some(r => r.pattern.toUpperCase() === pattern.toUpperCase() && JSON.stringify(r.target) === JSON.stringify(target));
-      if (!exists) state.rules.push({ id: genId(), pattern, target: { ...target } });
+      if (!exists) {
+        const newRule = { id: genId(), pattern, target: { ...target } };
+        state.rules.push(newRule);
+        // Aplicar la nueva regla retroactivamente a los movimientos ya importados
+        // que estén sin asignar y no ignorados
+        for (const other of state.movements) {
+          if (other.id === mov.id) continue;
+          if (other.assignedTo || other.ignored || other.isCardConsolidation) continue;
+          if (matchRule(newRule, other)) {
+            applyAssignment(other, newRule.target);
+            retroCount++;
+          }
+        }
+      }
     }
 
     saveState();
@@ -3907,7 +4027,11 @@ function showAssignModal(movId) {
     else if (currentView === 'cuadre') renderCuadre();
     renderTripleBalance(); // refrescar panel de balances
     updateCuadreBadge();
-    toast('Asignado');
+    if (retroCount > 0) {
+      toast(`Asignado + ${retroCount} movimientos similares auto-asignados`);
+    } else {
+      toast('Asignado');
+    }
   };
 }
 
@@ -4128,6 +4252,173 @@ function closeModal() {
 document.getElementById('modalBackdrop').addEventListener('click', (ev) => {
   if (ev.target.id === 'modalBackdrop') closeModal();
 });
+
+/* ---------- FUSIÓN CON JSON DE V1 ---------- */
+
+document.getElementById('importV1Btn').onclick = () => {
+  document.getElementById('importV1File').click();
+};
+
+document.getElementById('importV1File').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let v1;
+  try {
+    v1 = JSON.parse(await file.text());
+  } catch (err) {
+    toast('Archivo JSON inválido', true);
+    return;
+  }
+  if (!v1.months) { toast('El JSON no tiene la estructura esperada (falta "months")', true); return; }
+
+  let totalFixed = 0, totalPunt = 0, totalIngPunt = 0;
+  MONTHS.forEach(mk => {
+    const m = v1.months[mk] || {};
+    totalFixed += (m.fixed || []).length;
+    totalPunt += (m.puntuales || []).length;
+    totalIngPunt += (m.incomePuntuales || []).length;
+  });
+
+  const stats = fusionPreview();
+
+  openModal(`
+    <h2>🔄 Fusionar JSON de v1</h2>
+    <p style="color:var(--text-dim); font-size:0.88rem; margin-bottom:12px;">
+      Vamos a copiar tus previsiones desde el JSON de v1. Los <strong>movimientos importados y las reglas creadas en v2 se preservan</strong>.
+    </p>
+    <div style="background:var(--bg-elevated); padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.85rem;">
+      <strong>Se copiará del JSON:</strong>
+      <div>· ${totalFixed} gastos fijos (repartidos en los 12 meses)</div>
+      <div>· ${totalPunt} gastos puntuales</div>
+      <div>· ${totalIngPunt} ingresos puntuales</div>
+      <div>· Nóminas, saldos iniciales y notas</div>
+    </div>
+    <div style="background:var(--bg-elevated); padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.85rem;">
+      <strong>Estado actual v2:</strong>
+      <div>· ${stats.v2fixed} fijos · ${stats.v2punt} puntuales · ${stats.v2ing} ingresos</div>
+      <div>· ${stats.movs} movimientos importados (se conservan)</div>
+      <div>· ${stats.rules} reglas creadas (se conservan)</div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0;">
+        <input type="checkbox" id="mergeReplace" style="width:auto;">
+        <span style="font-size:0.85rem; color:var(--text);">Sobrescribir los ítems v2 que coincidan por concepto (recomendado si es la primera vez)</span>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-action="cancel">Cancelar</button>
+      <button class="btn btn-primary" data-action="doit">Fusionar</button>
+    </div>
+  `);
+
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
+  document.querySelector('[data-action="doit"]').onclick = () => {
+    const replace = document.getElementById('mergeReplace').checked;
+    const res = fuseV1(v1, replace);
+    saveState();
+    closeModal();
+    renderAll();
+    updateCuadreBadge();
+    toast(`✅ Fusionado: ${res.added} nuevos · ${res.updated} actualizados · ${res.skipped} ya existían`);
+  };
+};
+
+function fusionPreview() {
+  const s = { v2fixed: 0, v2punt: 0, v2ing: 0, movs: (state.movements||[]).length, rules: (state.rules||[]).length };
+  MONTHS.forEach(mk => {
+    const m = state.months[mk] || {};
+    s.v2fixed += (m.fixed || []).length;
+    s.v2punt += (m.puntuales || []).length;
+    s.v2ing += (m.incomePuntuales || []).length;
+  });
+  return s;
+}
+
+function fuseV1(v1, replace) {
+  let added = 0, updated = 0, skipped = 0;
+  if (!state.notes && v1.notes) state.notes = v1.notes;
+
+  MONTHS.forEach(mk => {
+    const src = v1.months[mk];
+    if (!src) return;
+    const dst = state.months[mk];
+    if (!dst) return;
+
+    if ((dst.saldoAnterior === null || dst.saldoAnterior === undefined) &&
+        src.saldoAnterior !== null && src.saldoAnterior !== undefined) {
+      dst.saldoAnterior = src.saldoAnterior;
+    }
+
+    if (src.nominaAner && src.nominaAner.amount && dst.nominaAner.source !== 'imported') {
+      if (replace || Math.abs(dst.nominaAner.amount - 1614.98) < 0.01) {
+        dst.nominaAner.amount = src.nominaAner.amount;
+        dst.nominaAner.source = 'manual';
+      }
+    }
+    if (src.nominaIratxe && src.nominaIratxe.amount && dst.nominaIratxe.source !== 'imported') {
+      if (replace || Math.abs(dst.nominaIratxe.amount - 2831.71) < 0.01) {
+        dst.nominaIratxe.amount = src.nominaIratxe.amount;
+        dst.nominaIratxe.source = 'manual';
+      }
+    }
+
+    (src.fixed || []).forEach(sf => {
+      const existing = dst.fixed.find(f => f.concept.toLowerCase() === sf.concept.toLowerCase());
+      if (!existing) {
+        dst.fixed.push({ id: genId(), concept: sf.concept, amount: sf.amount, done: !!sf.done, source: 'manual' });
+        added++;
+      } else if (replace && existing.source !== 'imported') {
+        existing.amount = sf.amount;
+        existing.done = !!sf.done;
+        existing.source = 'manual';
+        updated++;
+      } else skipped++;
+    });
+
+    (src.puntuales || []).forEach(sp => {
+      const existing = dst.puntuales.find(p => p.concept.toLowerCase() === sp.concept.toLowerCase());
+      if (!existing) {
+        dst.puntuales.push({ id: genId(), concept: sp.concept, amount: sp.amount, done: !!sp.done, source: 'manual' });
+        added++;
+      } else if (replace && existing.source !== 'imported') {
+        existing.amount = sp.amount;
+        existing.done = !!sp.done;
+        existing.source = 'manual';
+        updated++;
+      } else skipped++;
+    });
+
+    (src.incomePuntuales || []).forEach(si => {
+      const existing = dst.incomePuntuales.find(p => p.concept.toLowerCase() === si.concept.toLowerCase());
+      if (!existing) {
+        dst.incomePuntuales.push({ id: genId(), concept: si.concept, amount: si.amount, done: !!si.done, source: 'manual' });
+        added++;
+      } else if (replace && existing.source !== 'imported') {
+        existing.amount = si.amount;
+        existing.done = !!si.done;
+        existing.source = 'manual';
+        updated++;
+      } else skipped++;
+    });
+
+    if ((!dst.weeks || dst.weeks.length === 0) && Array.isArray(src.weeks) && src.weeks.length > 0) {
+      dst.weeks = src.weeks.map(w => ({
+        id: genId(),
+        startDate: w.startDate,
+        endDate: w.endDate,
+        budget: w.budget,
+        expenses: (w.expenses || []).map(e => ({
+          id: genId(), concept: e.concept, amount: e.amount, done: !!e.done, source: 'manual'
+        }))
+      }));
+      added += dst.weeks.length;
+    }
+  });
+
+  return { added, updated, skipped };
+}
 
 updateCuadreBadge();
 
