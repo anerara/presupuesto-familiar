@@ -1402,6 +1402,7 @@
   }
   .src-mark:hover { opacity: 1; }
   .src-mark.manual { filter: grayscale(0.3); }
+  .src-mark.v1 { filter: sepia(0.5); }
   .src-mark.linked { filter: hue-rotate(-20deg); }
   .src-mark.diff { color: var(--warning); font-size: 0.85rem; }
 
@@ -1862,6 +1863,27 @@ function ensureStateShape(s) {
     if (m.nominaAner) migrateItemLinks(m.nominaAner);
     if (m.nominaIratxe) migrateItemLinks(m.nominaIratxe);
   });
+
+  // v2.2: migración retroactiva de puntuales 'manual' → 'v1_imported'
+  // Se ejecuta UNA VEZ (marcamos con flag para no repetir)
+  if (!s._migratedV1Marks) {
+    MONTHS.forEach(mk => {
+      const m = s.months?.[mk];
+      if (!m) return;
+      (m.puntuales || []).forEach(p => {
+        // Si es 'manual' y no está enlazado con banco, asumimos que viene de v1
+        if (p.source === 'manual' && (!p.linkedMovIds || p.linkedMovIds.length === 0)) {
+          p.source = 'v1_imported';
+        }
+      });
+      (m.incomePuntuales || []).forEach(p => {
+        if (p.source === 'manual' && (!p.linkedMovIds || p.linkedMovIds.length === 0)) {
+          p.source = 'v1_imported';
+        }
+      });
+    });
+    s._migratedV1Marks = true;
+  }
 
   return s;
 }
@@ -2487,7 +2509,9 @@ function renderIncomePuntuales() {
   if (mo.incomePuntuales.length === 0) {
     list.innerHTML = '<div class="empty-state">Sin ingresos puntuales este mes</div>';
   } else {
-    list.innerHTML = mo.incomePuntuales.map(p => `
+    // Ordenar por importe descendente para detectar duplicados
+    const ordenados = [...mo.incomePuntuales].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    list.innerHTML = ordenados.map(p => `
       <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
         <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como cobrado'}">${p.done ? '✓' : ''}</button>
@@ -2598,8 +2622,9 @@ function renderFixed() {
 // Ícono de fuente: 📝 manual · 🔗 real importado
 function sourceIcon(item) {
   if (!item || !item.source) return '';
-  if (item.source === 'manual') return ' <span class="src-mark manual" title="Añadido a mano">📝</span>';
-  if (item.source === 'imported') return ' <span class="src-mark linked" title="Enlazado con movimiento importado">🔗</span>';
+  if (item.source === 'manual') return ' <span class="src-mark manual" title="Añadido a mano en v2">📝</span>';
+  if (item.source === 'v1_imported') return ' <span class="src-mark v1" title="Importado del JSON de v1">📄</span>';
+  if (item.source === 'imported') return ' <span class="src-mark linked" title="Enlazado con movimiento importado del banco">🔗</span>';
   return '';
 }
 
@@ -2771,7 +2796,9 @@ function renderPuntuales() {
   if (mo.puntuales.length === 0) {
     cont.innerHTML = '<div class="empty-state">Sin gastos puntuales este mes</div>';
   } else {
-    cont.innerHTML = mo.puntuales.map(p => `
+    // Ordenar por importe descendente (más caros arriba) para detectar duplicados fácilmente
+    const ordenados = [...mo.puntuales].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    cont.innerHTML = ordenados.map(p => `
       <div class="item-row ${p.done ? 'done' : ''}" data-id="${p.id}" draggable="true">
         <span class="drag-handle" title="Arrastrar para reordenar">⋮⋮</span>
         <button class="check-btn ${p.done ? 'checked' : ''}" data-action="toggle-done" title="${p.done ? 'Marcar como pendiente' : 'Marcar como realizado'}">${p.done ? '✓' : ''}</button>
@@ -3757,9 +3784,9 @@ function linkAppendMovToItem(item, mov) {
     item.done = true;
     return;
   }
-  // Primera asignación (item.source === 'manual' significa que el importe actual es previsión)
+  // Primera asignación (source 'manual' o 'v1_imported' significan que el importe actual es previsión)
   // Guardar previsión original antes de sobrescribir
-  if ((item.source === 'manual' || !item.source) && item.linkedMovIds.length === 0) {
+  if ((item.source === 'manual' || item.source === 'v1_imported' || !item.source) && item.linkedMovIds.length === 0) {
     if (Math.abs(item.amount - absAmount) > 0.01) {
       item.previewAmount = item.amount;
     }
@@ -4053,26 +4080,13 @@ function showAssignModal(movId) {
         options.push({ value: 'fixed:' + concept, label: `📌 ${concept} (${fmt(meta.lastAmount)})` });
       });
     }
-    // Puntuales conocidos
-    const puntArr = [...puntGastoSet.entries()].sort((a, b) => b[1].count - a[1].count);
-    if (puntArr.length > 0) {
-      options.push({ value: '__group_punt', label: '─── 🎯 Puntuales conocidos ───', disabled: true });
-      puntArr.slice(0, 30).forEach(([concept, meta]) => {
-        options.push({ value: 'puntual_existing:' + concept, label: `🎯 ${concept} (${fmt(meta.lastAmount)})` });
-      });
-    }
+    // Puntuales conocidos: ya NO se listan en el desplegable.
+    // El usuario los crea siempre como "Nuevo gasto puntual" para tener control total.
     options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_gasto', label: '➕ Nuevo gasto puntual…' });
     options.push({ value: 'new_fixed', label: '➕ Nuevo gasto fijo…' });
   } else {
-    // Ingresos puntuales conocidos
-    const ipuntArr = [...puntIngresoSet.entries()].sort((a, b) => b[1].count - a[1].count);
-    if (ipuntArr.length > 0) {
-      options.push({ value: '__group_ipunt', label: '─── 💚 Ingresos puntuales conocidos ───', disabled: true });
-      ipuntArr.slice(0, 30).forEach(([concept, meta]) => {
-        options.push({ value: 'ingreso_existing:' + concept, label: `💚 ${concept} (${fmt(meta.lastAmount)})` });
-      });
-    }
+    // Ingresos puntuales: mismo criterio, no listar catálogo
     options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_ingreso', label: '➕ Nuevo ingreso puntual…' });
   }
@@ -4713,14 +4727,14 @@ function fuseV1(v1, mode) {
     (src.puntuales || []).forEach(sp => {
       const existing = dst.puntuales.find(p => p.concept.toLowerCase() === sp.concept.toLowerCase());
       if (!existing) {
-        dst.puntuales.push({ id: genId(), concept: sp.concept, amount: sp.amount, done: !!sp.done, source: 'manual' });
+        dst.puntuales.push({ id: genId(), concept: sp.concept, amount: sp.amount, done: !!sp.done, source: 'v1_imported' });
         added++;
       } else if (existing.source === 'imported') { skipped++; }
       else if (mode === 'add-only') { skipped++; }
       else {
         existing.amount = sp.amount;
         existing.done = !!sp.done;
-        existing.source = 'manual';
+        existing.source = 'v1_imported';
         updated++;
       }
     });
@@ -4729,14 +4743,14 @@ function fuseV1(v1, mode) {
     (src.incomePuntuales || []).forEach(si => {
       const existing = dst.incomePuntuales.find(p => p.concept.toLowerCase() === si.concept.toLowerCase());
       if (!existing) {
-        dst.incomePuntuales.push({ id: genId(), concept: si.concept, amount: si.amount, done: !!si.done, source: 'manual' });
+        dst.incomePuntuales.push({ id: genId(), concept: si.concept, amount: si.amount, done: !!si.done, source: 'v1_imported' });
         added++;
       } else if (existing.source === 'imported') { skipped++; }
       else if (mode === 'add-only') { skipped++; }
       else {
         existing.amount = si.amount;
         existing.done = !!si.done;
-        existing.source = 'manual';
+        existing.source = 'v1_imported';
         updated++;
       }
     });
