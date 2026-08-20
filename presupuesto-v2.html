@@ -4285,10 +4285,10 @@ function renderCuadre() {
   }
 
   const movsImp = state.movements.filter(m => lastImp.movementIds.includes(m.id));
-  const auto = movsImp.filter(m => m.assignedTo && !m.ignored);
-  const cons = movsImp.filter(m => m.isCardConsolidation);
-  const unass = movsImp.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation);
-  const ign = movsImp.filter(m => m.ignored);
+  const auto = movsImp.filter(m => m.assignedTo && !m.ignored).sort((a, b) => a.date.localeCompare(b.date));
+  const cons = movsImp.filter(m => m.isCardConsolidation).sort((a, b) => a.date.localeCompare(b.date));
+  const unass = movsImp.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation).sort((a, b) => a.date.localeCompare(b.date));
+  const ign = movsImp.filter(m => m.ignored).sort((a, b) => a.date.localeCompare(b.date));
 
   const date = new Date(lastImp.timestamp);
   const dateStr = date.toLocaleString('es-ES');
