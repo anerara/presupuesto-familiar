@@ -1622,7 +1622,8 @@
           <option value="assigned">Asignados</option>
           <option value="ignored">Ignorados</option>
         </select>
-        <button class="btn btn-sm" id="btnClearMovs" style="margin-left:auto;">🗑️ Borrar todos</button>
+        <button class="btn btn-sm" id="btnClearAssign" style="margin-left:auto;">🔄 Resetear asignaciones</button>
+        <button class="btn btn-sm" id="btnClearMovs">🗑️ Borrar todos</button>
       </div>
 
       <div id="movList" class="mov-list"></div>
@@ -1838,6 +1839,29 @@ function ensureStateShape(s) {
   });
 
   if (s.lastImport === undefined) s.lastImport = null;
+
+  // v2.1: migración linkedMovId (single) → linkedMovIds (array) en items del presupuesto
+  // Esto evita que items enlazados con el sistema viejo pierdan su enlace
+  const migrateItemLinks = (item) => {
+    if (!item) return;
+    if (!Array.isArray(item.linkedMovIds)) {
+      if (item.linkedMovId) {
+        item.linkedMovIds = [item.linkedMovId];
+      } else {
+        item.linkedMovIds = [];
+      }
+    }
+    delete item.linkedMovId;
+  };
+  MONTHS.forEach(mk => {
+    const m = s.months?.[mk];
+    if (!m) return;
+    (m.fixed || []).forEach(migrateItemLinks);
+    (m.puntuales || []).forEach(migrateItemLinks);
+    (m.incomePuntuales || []).forEach(migrateItemLinks);
+    if (m.nominaAner) migrateItemLinks(m.nominaAner);
+    if (m.nominaIratxe) migrateItemLinks(m.nominaIratxe);
+  });
 
   return s;
 }
@@ -3481,6 +3505,33 @@ document.getElementById('btnClearMovs').onclick = () => {
   toast('Movimientos borrados');
 };
 
+document.getElementById('btnClearAssign').onclick = () => {
+  const asignados = state.movements.filter(m => m.assignedTo || m.ignored).length;
+  const reglas = state.rules.length;
+  if (asignados === 0 && reglas === 0) {
+    toast('No hay nada que resetear');
+    return;
+  }
+  if (!confirm(`Vas a resetear:\n\n· ${asignados} movimientos asignados/ignorados → volverán a "sin asignar"\n· ${reglas} reglas → se eliminarán\n· Los importes de los ítems enlazados con banco 🔗 volverán a la previsión original\n\nLos movimientos importados NO se borran. ¿Continuar?`)) return;
+
+  // Desenlazar todos los movs asignados de sus items del presupuesto
+  for (const m of state.movements) {
+    if (m.assignedTo) {
+      unlinkMovementFromBudget(m);
+      m.assignedTo = null;
+    }
+    m.ignored = false;
+  }
+  // Borrar todas las reglas
+  state.rules = [];
+
+  saveState();
+  renderAll();
+  renderMovements();
+  updateCuadreBadge();
+  toast(`✅ Reseteados ${asignados} movimientos y ${reglas} reglas`);
+};
+
 function showImportModal() {
   const optsHtml = state.accounts.map(a => `<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
   openModal(`
@@ -3646,81 +3697,202 @@ function linkMovementToBudget(mov) {
   if (t.type === 'fixed') {
     let item = month.fixed.find(f => f.concept.toLowerCase() === (t.concept || '').toLowerCase());
     if (!item && t.concept) {
-      item = { id: genId(), concept: t.concept, amount: absAmount, done: false, source: 'imported' };
+      item = { id: genId(), concept: t.concept, amount: 0, done: false, source: 'imported', linkedMovIds: [] };
       month.fixed.push(item);
     }
     if (item) {
-      // Detectar si estamos cambiando un importe previsto
-      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
-      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
-        item.previewAmount = previewAmount; // guardamos el previsto original
-      }
-      item.amount = absAmount;
-      item.done = true;
-      item.linkedMovId = mov.id;
-      item.source = 'imported';
+      linkAppendMovToItem(item, mov);
     }
   } else if (t.type === 'puntual_gasto') {
-    // Buscar item con este linkedMovId, o item existente con mismo concepto sin enlazar
-    let item = month.puntuales.find(p => p.linkedMovId === mov.id);
+    // Buscar item con este mov ya enlazado, o item existente con mismo concepto sin enlazar
+    let item = findItemWithMov(month.puntuales, mov.id);
     if (!item && t.concept) {
       item = month.puntuales.find(p =>
-        p.concept.toLowerCase() === t.concept.toLowerCase() && !p.linkedMovId);
+        p.concept.toLowerCase() === t.concept.toLowerCase() &&
+        (!p.linkedMovIds || p.linkedMovIds.length === 0));
     }
     if (!item) {
-      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id, source: 'imported' };
+      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: 0, done: true, source: 'imported', linkedMovIds: [] };
       month.puntuales.push(item);
-    } else {
-      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
-      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
-        item.previewAmount = previewAmount;
-      }
-      item.amount = absAmount;
-      item.done = true;
-      item.linkedMovId = mov.id;
-      item.source = 'imported';
     }
+    linkAppendMovToItem(item, mov);
+    item.done = true;
   } else if (t.type === 'puntual_ingreso') {
-    let item = month.incomePuntuales.find(p => p.linkedMovId === mov.id);
+    let item = findItemWithMov(month.incomePuntuales, mov.id);
     if (!item && t.concept) {
       item = month.incomePuntuales.find(p =>
-        p.concept.toLowerCase() === t.concept.toLowerCase() && !p.linkedMovId);
+        p.concept.toLowerCase() === t.concept.toLowerCase() &&
+        (!p.linkedMovIds || p.linkedMovIds.length === 0));
     }
     if (!item) {
-      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: absAmount, done: true, linkedMovId: mov.id, source: 'imported' };
+      item = { id: genId(), concept: t.concept || mov.concept.slice(0, 40), amount: 0, done: true, source: 'imported', linkedMovIds: [] };
       month.incomePuntuales.push(item);
-    } else {
-      const previewAmount = (item.source === 'manual' || !item.source) ? item.amount : null;
-      if (previewAmount !== null && Math.abs(previewAmount - absAmount) > 0.01) {
-        item.previewAmount = previewAmount;
-      }
-      item.amount = absAmount;
-      item.done = true;
-      item.linkedMovId = mov.id;
-      item.source = 'imported';
     }
+    linkAppendMovToItem(item, mov);
+    item.done = true;
   } else if (t.type === 'nomina_aner') {
-    month.nominaAner.amount = absAmount;
-    month.nominaAner.source = 'imported';
-    month.nominaAner.linkedMovId = mov.id;
+    linkAppendMovToNomina(month.nominaAner, mov);
   } else if (t.type === 'nomina_iratxe') {
-    month.nominaIratxe.amount = absAmount;
-    month.nominaIratxe.source = 'imported';
-    month.nominaIratxe.linkedMovId = mov.id;
+    linkAppendMovToNomina(month.nominaIratxe, mov);
   }
+}
+
+// Helper: buscar en un array de items el que ya contenga mov.id en linkedMovIds
+function findItemWithMov(arr, movId) {
+  return (arr || []).find(it => Array.isArray(it.linkedMovIds) && it.linkedMovIds.includes(movId));
+}
+
+// Helper: añadir un movimiento a un item, sumando importes y guardando historial
+function linkAppendMovToItem(item, mov) {
+  if (!Array.isArray(item.linkedMovIds)) {
+    // Migración: si tenía el linkedMovId antiguo, convertirlo a array
+    item.linkedMovIds = item.linkedMovId ? [item.linkedMovId] : [];
+    delete item.linkedMovId;
+  }
+  const absAmount = Math.abs(mov.amount);
+  // Si este mov ya estaba enlazado, no volver a sumar
+  if (item.linkedMovIds.includes(mov.id)) {
+    // Ya estaba: recalcular la suma por si algo cambió
+    recalcItemFromLinkedMovs(item);
+    return;
+  }
+  // Primera asignación (item.source === 'manual' significa que el importe actual es previsión)
+  // Guardar previsión original antes de sobrescribir
+  if ((item.source === 'manual' || !item.source) && item.linkedMovIds.length === 0) {
+    if (Math.abs(item.amount - absAmount) > 0.01) {
+      item.previewAmount = item.amount;
+    }
+    item.amount = absAmount;
+  } else {
+    // Ya había otros movs enlazados: SUMAR el nuevo
+    item.amount = (item.amount || 0) + absAmount;
+  }
+  item.linkedMovIds.push(mov.id);
+  item.source = 'imported';
+}
+
+// Recalcular importe del item basado en la suma de todos los movs enlazados
+function recalcItemFromLinkedMovs(item) {
+  if (!Array.isArray(item.linkedMovIds) || item.linkedMovIds.length === 0) return;
+  let total = 0;
+  for (const mid of item.linkedMovIds) {
+    const m = state.movements.find(x => x.id === mid);
+    if (m) total += Math.abs(m.amount);
+  }
+  if (item.previewAmount === undefined && Math.abs(item.amount - total) > 0.01 && item.source !== 'imported') {
+    item.previewAmount = item.amount;
+  }
+  item.amount = total;
+}
+
+// Nóminas: parecido pero campo distinto
+function linkAppendMovToNomina(nomina, mov) {
+  if (!Array.isArray(nomina.linkedMovIds)) {
+    nomina.linkedMovIds = nomina.linkedMovId ? [nomina.linkedMovId] : [];
+    delete nomina.linkedMovId;
+  }
+  const absAmount = Math.abs(mov.amount);
+  if (nomina.linkedMovIds.includes(mov.id)) {
+    // Recalcular
+    let total = 0;
+    for (const mid of nomina.linkedMovIds) {
+      const m = state.movements.find(x => x.id === mid);
+      if (m) total += Math.abs(m.amount);
+    }
+    nomina.amount = total;
+    return;
+  }
+  if (nomina.source !== 'imported' && nomina.linkedMovIds.length === 0) {
+    nomina.amount = absAmount;
+  } else {
+    nomina.amount = (nomina.amount || 0) + absAmount;
+  }
+  nomina.linkedMovIds.push(mov.id);
+  nomina.source = 'imported';
 }
 
 function unlinkMovementFromBudget(mov) {
   const monthKey = MONTHS[new Date(mov.date + 'T00:00:00').getMonth()];
   const month = state.months[monthKey];
   if (!month) return;
-  ['fixed', 'puntuales', 'incomePuntuales'].forEach(k => {
-    if (k === 'fixed') {
-      (month[k] || []).forEach(it => {
-        if (it.linkedMovId === mov.id) { it.done = false; delete it.linkedMovId; }
-      });
-    } else {
-      month[k] = (month[k] || []).filter(it => it.linkedMovId !== mov.id);
+
+  // Gastos fijos: quitar mov del array, recalcular importe.
+  // Si queda sin movs enlazados, restaurar previewAmount (previsión original) si existía.
+  (month.fixed || []).forEach(it => {
+    // Migración: linkedMovId antiguo → array
+    if (!Array.isArray(it.linkedMovIds) && it.linkedMovId) {
+      it.linkedMovIds = [it.linkedMovId];
+      delete it.linkedMovId;
+    }
+    if (Array.isArray(it.linkedMovIds) && it.linkedMovIds.includes(mov.id)) {
+      it.linkedMovIds = it.linkedMovIds.filter(id => id !== mov.id);
+      if (it.linkedMovIds.length === 0) {
+        // Restaurar previsión si la había
+        if (it.previewAmount !== undefined && it.previewAmount !== null) {
+          it.amount = it.previewAmount;
+          delete it.previewAmount;
+        }
+        it.done = false;
+        it.source = 'manual';
+        delete it.linkedMovIds;
+      } else {
+        // Aún quedan otros movs: recalcular
+        recalcItemFromLinkedMovs(it);
+      }
+    }
+  });
+
+  // Puntuales gasto e ingreso: si queda sin movs enlazados y NO tenía preview (era item auto-creado), eliminarlo
+  ['puntuales', 'incomePuntuales'].forEach(k => {
+    if (!month[k]) return;
+    month[k] = month[k].filter(it => {
+      if (!Array.isArray(it.linkedMovIds) && it.linkedMovId) {
+        it.linkedMovIds = [it.linkedMovId];
+        delete it.linkedMovId;
+      }
+      if (!Array.isArray(it.linkedMovIds) || !it.linkedMovIds.includes(mov.id)) return true;
+      it.linkedMovIds = it.linkedMovIds.filter(id => id !== mov.id);
+      if (it.linkedMovIds.length === 0) {
+        // Sin movs enlazados. Si tenía previewAmount, restaurar; si no, eliminar el item
+        if (it.previewAmount !== undefined && it.previewAmount !== null) {
+          it.amount = it.previewAmount;
+          delete it.previewAmount;
+          it.done = false;
+          it.source = 'manual';
+          delete it.linkedMovIds;
+          return true;
+        }
+        return false; // eliminar
+      }
+      recalcItemFromLinkedMovs(it);
+      return true;
+    });
+  });
+
+  // Nóminas
+  ['nominaAner', 'nominaIratxe'].forEach(k => {
+    const n = month[k];
+    if (!n) return;
+    if (!Array.isArray(n.linkedMovIds) && n.linkedMovId) {
+      n.linkedMovIds = [n.linkedMovId];
+      delete n.linkedMovId;
+    }
+    if (Array.isArray(n.linkedMovIds) && n.linkedMovIds.includes(mov.id)) {
+      n.linkedMovIds = n.linkedMovIds.filter(id => id !== mov.id);
+      if (n.linkedMovIds.length === 0) {
+        n.source = 'manual';
+        delete n.linkedMovIds;
+        // Restaurar valor default
+        n.amount = (k === 'nominaAner') ? 1614.98 : 2831.71;
+      } else {
+        // Recalcular suma
+        let total = 0;
+        for (const mid of n.linkedMovIds) {
+          const m = state.movements.find(x => x.id === mid);
+          if (m) total += Math.abs(m.amount);
+        }
+        n.amount = total;
+      }
     }
   });
 }
@@ -3935,7 +4107,8 @@ function showAssignModal(movId) {
         <span style="font-size:0.85rem; color:var(--text);">Aprender esta asignación (crea regla automática)</span>
       </label>
       <input type="text" id="rulePattern" placeholder="Patrón (ej. BASKEPENSIONES)" style="margin-top:6px;">
-      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Si el concepto de un futuro movimiento contiene este texto, se asignará solo.</div>
+      <div id="rulePatternHint" style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Si el concepto de un futuro movimiento contiene este texto, se asignará solo.</div>
+      <div id="rulePatternMatches" style="font-size:0.78rem; margin-top:6px; padding:6px 8px; background:var(--bg-elevated); border-radius:4px; display:none;"></div>
     </div>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
@@ -3947,8 +4120,28 @@ function showAssignModal(movId) {
   const conceptGroup = document.getElementById('conceptInputGroup');
   const conceptInput = document.getElementById('newConceptInput');
   const ruleInput = document.getElementById('rulePattern');
-  const words = mov.concept.split(/\s+/).filter(w => w.length > 2);
-  ruleInput.value = words.slice(0, 2).join(' ');
+
+  // Patrón sugerido: coge las 3-4 primeras palabras contiguas del concepto (tal cual salen)
+  // Así se conserva la estructura real del texto en vez de saltar palabras.
+  // Ejemplos:
+  //   "TRASPASO A P3 BASKEPENSIONES 30" → "TRASPASO A P3 BASKEPENSIONES"
+  //   "RBO IGUALATORIO IMQ11119143" → "RBO IGUALATORIO IMQ11119143" (patrón único IMQ)
+  //   "NOMINA NOMINA MARZO 2026 CANAL P" → "NOMINA NOMINA MARZO 2026"
+  //   "ENVIO BIZUM super" → "ENVIO BIZUM"
+  const cleanConcept = mov.concept.trim().replace(/\s+/g, ' ');
+  const allWords = cleanConcept.split(' ');
+  // Regla: por defecto, primeras 4 palabras, o hasta la primera que sea corta puramente numérica
+  let take = Math.min(allWords.length, 4);
+  // Recortar si aparece un número puro corto (posible fecha o suffix variable)
+  for (let i = 2; i < take; i++) {
+    if (/^\d{1,4}$/.test(allWords[i]) && i >= 2) {
+      // pero si el número forma parte esencial (ej. IMQ11119143), no cortar
+      // los códigos alfanuméricos como IMQ11119143 no encajan aquí porque no son solo dígitos
+      take = i;
+      break;
+    }
+  }
+  ruleInput.value = allWords.slice(0, take).join(' ');
 
   // Marcar las opciones de encabezado (─── ... ───) como disabled visualmente
   Array.from(sel.options).forEach(opt => {
@@ -3967,6 +4160,34 @@ function showAssignModal(movId) {
   }
   refreshConceptVisibility();
   sel.onchange = refreshConceptVisibility;
+
+  // Feedback en vivo: cuántos movimientos coinciden con el patrón actual
+  function refreshPatternMatches() {
+    const box = document.getElementById('rulePatternMatches');
+    if (!box) return;
+    const learn = document.getElementById('learnRuleChk').checked;
+    const pattern = ruleInput.value.trim();
+    if (!learn || !pattern) { box.style.display = 'none'; return; }
+    const patUp = pattern.toUpperCase();
+    const matches = state.movements.filter(m =>
+      !m.isCardConsolidation &&
+      !m.ignored &&
+      (m.concept || '').toUpperCase().includes(patUp)
+    );
+    const yaAsignados = matches.filter(m => m.assignedTo).length;
+    const sinAsignar = matches.length - yaAsignados;
+    box.style.display = 'block';
+    let color = 'var(--info)';
+    if (matches.length === 0) color = 'var(--warning)';
+    else if (matches.length > 20) color = 'var(--warning)';
+    box.style.color = color;
+    box.innerHTML = matches.length === 0
+      ? '⚠️ Ningún movimiento coincide con este patrón — la regla no servirá'
+      : `🎯 <strong>${matches.length}</strong> movimientos coinciden (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)`;
+  }
+  ruleInput.oninput = refreshPatternMatches;
+  document.getElementById('learnRuleChk').onchange = refreshPatternMatches;
+  refreshPatternMatches();
 
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="save"]').onclick = () => {
