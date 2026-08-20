@@ -3696,7 +3696,14 @@ function applyRulesToMovements(movs) {
 
 function matchRule(rule, mov) {
   if (!rule.pattern) return false;
-  return (mov.concept || '').toUpperCase().includes(rule.pattern.toUpperCase());
+  if (!(mov.concept || '').toUpperCase().includes(rule.pattern.toUpperCase())) return false;
+  // Filtro opcional por importe (si la regla lo tiene definido)
+  if (rule.amount !== undefined && rule.amount !== null && rule.amount !== '') {
+    const ruleAmt = Math.abs(Number(rule.amount));
+    const movAmt = Math.abs(mov.amount);
+    if (Math.abs(ruleAmt - movAmt) > 0.01) return false;
+  }
+  return true;
 }
 
 function applyAssignment(mov, target) {
@@ -4124,6 +4131,11 @@ function showAssignModal(movId) {
       </label>
       <input type="text" id="rulePattern" placeholder="Patrón (ej. BASKEPENSIONES)" style="margin-top:6px;">
       <div id="rulePatternHint" style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Si el concepto de un futuro movimiento contiene este texto, se asignará solo.</div>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; margin-top:8px;">
+        <input type="checkbox" id="ruleFilterByAmount" style="width:auto;">
+        <span style="font-size:0.82rem; color:var(--text-dim);">Filtrar también por importe (útil cuando varios conceptos comparten texto)</span>
+      </label>
+      <input type="text" id="ruleAmount" placeholder="Importe exacto (ej. 23.55)" style="margin-top:4px; display:none;">
       <div id="rulePatternMatches" style="font-size:0.78rem; margin-top:6px; padding:6px 8px; background:var(--bg-elevated); border-radius:4px; display:none;"></div>
     </div>
     <div class="modal-actions">
@@ -4185,11 +4197,18 @@ function showAssignModal(movId) {
     const pattern = ruleInput.value.trim();
     if (!learn || !pattern) { box.style.display = 'none'; return; }
     const patUp = pattern.toUpperCase();
-    const matches = state.movements.filter(m =>
+    const filterByAmount = document.getElementById('ruleFilterByAmount')?.checked;
+    const amountInput = document.getElementById('ruleAmount');
+    const targetAmount = filterByAmount ? parseFloat(String(amountInput.value).replace(',', '.')) : null;
+
+    let matches = state.movements.filter(m =>
       !m.isCardConsolidation &&
       !m.ignored &&
       (m.concept || '').toUpperCase().includes(patUp)
     );
+    if (targetAmount !== null && !isNaN(targetAmount)) {
+      matches = matches.filter(m => Math.abs(Math.abs(m.amount) - Math.abs(targetAmount)) < 0.01);
+    }
     const yaAsignados = matches.filter(m => m.assignedTo).length;
     const sinAsignar = matches.length - yaAsignados;
     box.style.display = 'block';
@@ -4197,12 +4216,27 @@ function showAssignModal(movId) {
     if (matches.length === 0) color = 'var(--warning)';
     else if (matches.length > 20) color = 'var(--warning)';
     box.style.color = color;
+    const amtSuffix = (targetAmount !== null && !isNaN(targetAmount)) ? ` de ${fmt(targetAmount)}` : '';
     box.innerHTML = matches.length === 0
       ? '⚠️ Ningún movimiento coincide con este patrón — la regla no servirá'
-      : `🎯 <strong>${matches.length}</strong> movimientos coinciden (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)`;
+      : `🎯 <strong>${matches.length}</strong> movimientos coinciden${amtSuffix} (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)`;
   }
   ruleInput.oninput = refreshPatternMatches;
   document.getElementById('learnRuleChk').onchange = refreshPatternMatches;
+
+  // Listeners del filtro por importe
+  const chkAmt = document.getElementById('ruleFilterByAmount');
+  const inpAmt = document.getElementById('ruleAmount');
+  chkAmt.onchange = () => {
+    inpAmt.style.display = chkAmt.checked ? 'block' : 'none';
+    if (chkAmt.checked && !inpAmt.value) {
+      // Prerelleno con el importe del movimiento actual
+      inpAmt.value = Math.abs(mov.amount).toFixed(2).replace('.', ',');
+    }
+    refreshPatternMatches();
+  };
+  inpAmt.oninput = refreshPatternMatches;
+
   refreshPatternMatches();
 
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
@@ -4240,11 +4274,20 @@ function showAssignModal(movId) {
 
     const learn = document.getElementById('learnRuleChk').checked;
     const pattern = ruleInput.value.trim();
+    const filterByAmount = document.getElementById('ruleFilterByAmount').checked;
+    const amountInput = document.getElementById('ruleAmount');
+    const ruleAmount = filterByAmount ? parseFloat(String(amountInput.value).replace(',', '.')) : null;
     let retroCount = 0;
     if (learn && pattern && target) {
-      const exists = state.rules.some(r => r.pattern.toUpperCase() === pattern.toUpperCase() && JSON.stringify(r.target) === JSON.stringify(target));
+      const newRule = { id: genId(), pattern, target: { ...target } };
+      if (ruleAmount !== null && !isNaN(ruleAmount)) newRule.amount = ruleAmount;
+      // Comparar duplicados considerando también el importe
+      const exists = state.rules.some(r =>
+        r.pattern.toUpperCase() === pattern.toUpperCase() &&
+        JSON.stringify(r.target) === JSON.stringify(target) &&
+        (r.amount === newRule.amount || (r.amount === undefined && newRule.amount === undefined))
+      );
       if (!exists) {
-        const newRule = { id: genId(), pattern, target: { ...target } };
         state.rules.push(newRule);
         // Aplicar la nueva regla retroactivamente a los movimientos ya importados
         // que estén sin asignar y no ignorados
@@ -4413,13 +4456,17 @@ function renderRules() {
     rList.innerHTML = '<div class="empty-state">Sin reglas todavía. Se crearán solas al asignar movimientos en la pestaña Cuadre.</div>';
     return;
   }
-  rList.innerHTML = state.rules.map(r => `
+  rList.innerHTML = state.rules.map(r => {
+    const amountBadge = (r.amount !== undefined && r.amount !== null)
+      ? ` <span style="color:var(--accent); font-size:0.75rem;">+ importe ${fmt(r.amount)}</span>`
+      : '';
+    return `
     <div class="rules-row" data-id="${r.id}">
-      <span class="rule-pattern">concepto contiene "${escapeHTML(r.pattern)}"</span>
+      <span class="rule-pattern">concepto contiene "${escapeHTML(r.pattern)}"${amountBadge}</span>
       <span>→ ${escapeHTML(assignmentLabel(r.target))}</span>
       <button class="btn btn-sm" data-action="del-rule" title="Eliminar">🗑️</button>
     </div>
-  `).join('');
+  `;}).join('');
   rList.querySelectorAll('[data-action="del-rule"]').forEach(b => {
     b.onclick = () => {
       const id = b.closest('.rules-row').dataset.id;
