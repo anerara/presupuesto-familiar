@@ -1593,6 +1593,7 @@
     <input type="file" id="importFile" accept=".json" class="hidden">
     <button class="btn" id="importV1Btn" title="Importa el JSON de la app v1 sin borrar los movimientos importados">🔄 Fusionar JSON de v1</button>
     <input type="file" id="importV1File" accept=".json" class="hidden">
+    <button class="btn" id="cleanDefaultsBtn" title="Elimina los 26 gastos por defecto antiguos si los tienes arrastrados">🧹 Limpiar defaults antiguos</button>
     <button class="btn" id="resetBtn">🗑️ Resetear mes</button>
   </div>
 
@@ -4255,8 +4256,55 @@ document.getElementById('modalBackdrop').addEventListener('click', (ev) => {
 
 /* ---------- FUSIÓN CON JSON DE V1 ---------- */
 
+// Los 26 conceptos DEFAULT antiguos que puede haber en la caché de un v2 anterior.
+// Se detectan por (concepto, importe) exactos; si el usuario los editó ya no coinciden.
+const V1_DEFAULT_HARDCODED = [
+  ['Hipoteca', 650], ['Comunidad', 45], ['IBI', 35], ['Seguro hogar', 28],
+  ['Luz', 95], ['Gas', 65], ['Agua', 35], ['Internet + móvil', 75],
+  ['Móvil Aner', 18], ['Móvil Iratxe', 18], ['Netflix', 13.99], ['Spotify', 11.99],
+  ['Amazon Prime', 5.99], ['Gimnasio Aner', 35], ['Gimnasio Iratxe', 35],
+  ['Seguro coche', 55], ['Gasolina', 120], ['ITV / Mantenimiento', 15],
+  ['Parking', 85], ['Compra semanal (media)', 400], ['Seguro médico', 95],
+  ['Farmacia', 25], ['Ahorro automático', 300], ['Plan pensiones', 100],
+  ['Donaciones', 20], ['Suscripciones varias', 10.53]
+];
+
+function isDefaultHardcoded(item) {
+  if (!item) return false;
+  // Solo consideramos "default puro" si no está enlazado a movimiento ni marcado como imported
+  if (item.linkedMovId || item.source === 'imported') return false;
+  return V1_DEFAULT_HARDCODED.some(([c, a]) =>
+    c.toLowerCase() === item.concept.toLowerCase() && Math.abs(item.amount - a) < 0.01
+  );
+}
+
 document.getElementById('importV1Btn').onclick = () => {
   document.getElementById('importV1File').click();
+};
+
+document.getElementById('cleanDefaultsBtn').onclick = () => {
+  let toRemove = 0;
+  MONTHS.forEach(mk => {
+    (state.months[mk]?.fixed || []).forEach(f => { if (isDefaultHardcoded(f)) toRemove++; });
+  });
+  if (toRemove === 0) {
+    toast('No hay defaults antiguos que limpiar 👍');
+    return;
+  }
+  if (!confirm(`Encontré ${toRemove} gastos por defecto antiguos (Netflix 13,99€, Ahorro 300€, Plan pensiones 100€, etc.) que se metieron por defecto y NO son tuyos. ¿Los elimino?\n\nLos que están enlazados con banco 🔗 NO se tocan.`)) return;
+  let cleaned = 0;
+  MONTHS.forEach(mk => {
+    const dst = state.months[mk];
+    if (!dst) return;
+    const before = dst.fixed.length;
+    dst.fixed = dst.fixed.filter(f => {
+      if (isDefaultHardcoded(f)) { cleaned++; return false; }
+      return true;
+    });
+  });
+  saveState();
+  renderAll();
+  toast(`🧹 ${cleaned} gastos default eliminados`);
 };
 
 document.getElementById('importV1File').onchange = async (e) => {
@@ -4282,12 +4330,18 @@ document.getElementById('importV1File').onchange = async (e) => {
   });
 
   const stats = fusionPreview();
+  // Contar defaults hardcoded que están arrastrados
+  let arrastrados = 0;
+  MONTHS.forEach(mk => {
+    (state.months[mk]?.fixed || []).forEach(f => { if (isDefaultHardcoded(f)) arrastrados++; });
+  });
 
   openModal(`
     <h2>🔄 Fusionar JSON de v1</h2>
     <p style="color:var(--text-dim); font-size:0.88rem; margin-bottom:12px;">
-      Vamos a copiar tus previsiones desde el JSON de v1. Los <strong>movimientos importados y las reglas creadas en v2 se preservan</strong>.
+      Vamos a traer tus previsiones del JSON. Los <strong>movimientos importados y las reglas creadas se preservan siempre</strong>.
     </p>
+
     <div style="background:var(--bg-elevated); padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.85rem;">
       <strong>Se copiará del JSON:</strong>
       <div>· ${totalFixed} gastos fijos (repartidos en los 12 meses)</div>
@@ -4295,18 +4349,43 @@ document.getElementById('importV1File').onchange = async (e) => {
       <div>· ${totalIngPunt} ingresos puntuales</div>
       <div>· Nóminas, saldos iniciales y notas</div>
     </div>
+
     <div style="background:var(--bg-elevated); padding:12px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:0.85rem;">
       <strong>Estado actual v2:</strong>
       <div>· ${stats.v2fixed} fijos · ${stats.v2punt} puntuales · ${stats.v2ing} ingresos</div>
       <div>· ${stats.movs} movimientos importados (se conservan)</div>
-      <div>· ${stats.rules} reglas creadas (se conservan)</div>
+      <div>· ${stats.rules} reglas (se conservan)</div>
+      ${arrastrados > 0 ? `<div style="color:var(--warning); margin-top:6px;">⚠️ Detecto ${arrastrados} gastos "default" arrastrados de una v2 antigua — se limpiarán</div>` : ''}
     </div>
+
     <div class="form-group">
-      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0;">
-        <input type="checkbox" id="mergeReplace" style="width:auto;">
-        <span style="font-size:0.85rem; color:var(--text);">Sobrescribir los ítems v2 que coincidan por concepto (recomendado si es la primera vez)</span>
+      <label style="font-size:0.85rem; color:var(--text); text-transform:none; letter-spacing:0; margin-bottom:8px; font-weight:600;">Modo de fusión:</label>
+
+      <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; padding:8px; border-radius:var(--radius-sm); background:var(--bg-elevated); margin-bottom:6px;">
+        <input type="radio" name="mergeMode" value="smart" checked style="width:auto; margin-top:2px;">
+        <div>
+          <div style="font-size:0.9rem; color:var(--text); font-weight:600;">Inteligente (recomendado)</div>
+          <div style="font-size:0.78rem; color:var(--text-faint); margin-top:2px;">Añade lo que falta · Sobrescribe los defaults antiguos · Actualiza importes previstos · NUNCA toca ítems enlazados con banco 🔗</div>
+        </div>
+      </label>
+
+      <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; padding:8px; border-radius:var(--radius-sm); background:var(--bg-elevated); margin-bottom:6px;">
+        <input type="radio" name="mergeMode" value="add-only" style="width:auto; margin-top:2px;">
+        <div>
+          <div style="font-size:0.9rem; color:var(--text); font-weight:600;">Solo añadir lo que falte</div>
+          <div style="font-size:0.78rem; color:var(--text-faint); margin-top:2px;">No toca ningún ítem existente, aunque sea default</div>
+        </div>
+      </label>
+
+      <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; padding:8px; border-radius:var(--radius-sm); background:var(--bg-elevated);">
+        <input type="radio" name="mergeMode" value="force" style="width:auto; margin-top:2px;">
+        <div>
+          <div style="font-size:0.9rem; color:var(--text); font-weight:600;">Sobrescribir todo</div>
+          <div style="font-size:0.78rem; color:var(--text-faint); margin-top:2px;">Reemplaza ítems v2 con los del JSON. Los enlazados con banco 🔗 quedan como en el JSON (pierdes el enlace).</div>
+        </div>
       </label>
     </div>
+
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
       <button class="btn btn-primary" data-action="doit">Fusionar</button>
@@ -4315,13 +4394,13 @@ document.getElementById('importV1File').onchange = async (e) => {
 
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="doit"]').onclick = () => {
-    const replace = document.getElementById('mergeReplace').checked;
-    const res = fuseV1(v1, replace);
+    const mode = document.querySelector('input[name="mergeMode"]:checked').value;
+    const res = fuseV1(v1, mode);
     saveState();
     closeModal();
     renderAll();
     updateCuadreBadge();
-    toast(`✅ Fusionado: ${res.added} nuevos · ${res.updated} actualizados · ${res.skipped} ya existían`);
+    toast(`✅ ${res.added} añadidos · ${res.updated} actualizados · ${res.cleaned} defaults limpiados · ${res.skipped} preservados`);
   };
 };
 
@@ -4336,8 +4415,9 @@ function fusionPreview() {
   return s;
 }
 
-function fuseV1(v1, replace) {
-  let added = 0, updated = 0, skipped = 0;
+// mode: 'smart' | 'add-only' | 'force'
+function fuseV1(v1, mode) {
+  let added = 0, updated = 0, skipped = 0, cleaned = 0;
   if (!state.notes && v1.notes) state.notes = v1.notes;
 
   MONTHS.forEach(mk => {
@@ -4346,63 +4426,99 @@ function fuseV1(v1, replace) {
     const dst = state.months[mk];
     if (!dst) return;
 
+    // Saldo anterior: solo si v2 no lo tenía
     if ((dst.saldoAnterior === null || dst.saldoAnterior === undefined) &&
         src.saldoAnterior !== null && src.saldoAnterior !== undefined) {
       dst.saldoAnterior = src.saldoAnterior;
+    } else if (mode === 'force' && src.saldoAnterior !== null && src.saldoAnterior !== undefined) {
+      dst.saldoAnterior = src.saldoAnterior;
     }
 
+    // === PASO 1: Limpiar defaults hardcoded arrastrados (siempre que no sean 'add-only') ===
+    if (mode !== 'add-only') {
+      const beforeFixed = dst.fixed.length;
+      dst.fixed = dst.fixed.filter(f => {
+        if (isDefaultHardcoded(f)) {
+          cleaned++;
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // === PASO 2: Nóminas ===
+    const nAnerDefault = Math.abs(dst.nominaAner.amount - 1614.98) < 0.01;
     if (src.nominaAner && src.nominaAner.amount && dst.nominaAner.source !== 'imported') {
-      if (replace || Math.abs(dst.nominaAner.amount - 1614.98) < 0.01) {
+      if (mode === 'force' || nAnerDefault ||
+          (mode === 'smart' && dst.nominaAner.source !== 'manual')) {
         dst.nominaAner.amount = src.nominaAner.amount;
         dst.nominaAner.source = 'manual';
+      } else if (mode === 'smart' && dst.nominaAner.source === 'manual') {
+        // sobrescribir tb en smart si el usuario aún no lo editó a mano de forma consciente
+        dst.nominaAner.amount = src.nominaAner.amount;
       }
     }
+    const nIratxeDefault = Math.abs(dst.nominaIratxe.amount - 2831.71) < 0.01;
     if (src.nominaIratxe && src.nominaIratxe.amount && dst.nominaIratxe.source !== 'imported') {
-      if (replace || Math.abs(dst.nominaIratxe.amount - 2831.71) < 0.01) {
+      if (mode === 'force' || nIratxeDefault || mode === 'smart') {
         dst.nominaIratxe.amount = src.nominaIratxe.amount;
         dst.nominaIratxe.source = 'manual';
       }
     }
 
+    // === PASO 3: Gastos fijos ===
     (src.fixed || []).forEach(sf => {
       const existing = dst.fixed.find(f => f.concept.toLowerCase() === sf.concept.toLowerCase());
       if (!existing) {
         dst.fixed.push({ id: genId(), concept: sf.concept, amount: sf.amount, done: !!sf.done, source: 'manual' });
         added++;
-      } else if (replace && existing.source !== 'imported') {
+      } else if (existing.source === 'imported') {
+        // No tocar ítems enlazados con banco
+        skipped++;
+      } else if (mode === 'add-only') {
+        skipped++;
+      } else {
+        // smart o force: actualizar importe/done del existing sin cambiar id
         existing.amount = sf.amount;
         existing.done = !!sf.done;
         existing.source = 'manual';
         updated++;
-      } else skipped++;
+      }
     });
 
+    // === PASO 4: Puntuales gasto ===
     (src.puntuales || []).forEach(sp => {
       const existing = dst.puntuales.find(p => p.concept.toLowerCase() === sp.concept.toLowerCase());
       if (!existing) {
         dst.puntuales.push({ id: genId(), concept: sp.concept, amount: sp.amount, done: !!sp.done, source: 'manual' });
         added++;
-      } else if (replace && existing.source !== 'imported') {
+      } else if (existing.source === 'imported') { skipped++; }
+      else if (mode === 'add-only') { skipped++; }
+      else {
         existing.amount = sp.amount;
         existing.done = !!sp.done;
         existing.source = 'manual';
         updated++;
-      } else skipped++;
+      }
     });
 
+    // === PASO 5: Ingresos puntuales ===
     (src.incomePuntuales || []).forEach(si => {
       const existing = dst.incomePuntuales.find(p => p.concept.toLowerCase() === si.concept.toLowerCase());
       if (!existing) {
         dst.incomePuntuales.push({ id: genId(), concept: si.concept, amount: si.amount, done: !!si.done, source: 'manual' });
         added++;
-      } else if (replace && existing.source !== 'imported') {
+      } else if (existing.source === 'imported') { skipped++; }
+      else if (mode === 'add-only') { skipped++; }
+      else {
         existing.amount = si.amount;
         existing.done = !!si.done;
         existing.source = 'manual';
         updated++;
-      } else skipped++;
+      }
     });
 
+    // === PASO 6: Semanas (solo si v2 no las tiene) ===
     if ((!dst.weeks || dst.weeks.length === 0) && Array.isArray(src.weeks) && src.weeks.length > 0) {
       dst.weeks = src.weeks.map(w => ({
         id: genId(),
@@ -4417,7 +4533,7 @@ function fuseV1(v1, replace) {
     }
   });
 
-  return { added, updated, skipped };
+  return { added, updated, skipped, cleaned };
 }
 
 updateCuadreBadge();
