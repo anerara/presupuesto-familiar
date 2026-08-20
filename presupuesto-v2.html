@@ -3754,6 +3754,7 @@ function linkAppendMovToItem(item, mov) {
   if (item.linkedMovIds.includes(mov.id)) {
     // Ya estaba: recalcular la suma por si algo cambió
     recalcItemFromLinkedMovs(item);
+    item.done = true;
     return;
   }
   // Primera asignación (item.source === 'manual' significa que el importe actual es previsión)
@@ -3769,6 +3770,7 @@ function linkAppendMovToItem(item, mov) {
   }
   item.linkedMovIds.push(mov.id);
   item.source = 'imported';
+  item.done = true;  // marcar automáticamente como realizado al enlazar con banco
 }
 
 // Recalcular importe del item basado en la suma de todos los movs enlazados
