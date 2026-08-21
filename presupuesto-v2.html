@@ -3664,19 +3664,24 @@ async function parseMovementFile(file, accId) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
 
   let headerIdx = -1;
+  let idxFecha = -1, idxConcepto = -1, idxImporte = -1;
+
+  // Buscar cabecera flexible: acepta "fecha" o "fecha de operación", "concepto", "importe"
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const row = rows[i].map(c => String(c || '').toLowerCase().trim());
-    if (row.includes('fecha') && row.includes('concepto') && row.includes('importe')) {
+    // Buscar índices por coincidencia parcial
+    const fFecha = row.findIndex(c => c === 'fecha' || c === 'fecha operación' || c === 'fecha de operación' || c === 'fecha operacion' || c === 'fecha de operacion');
+    const fConcepto = row.findIndex(c => c === 'concepto' || c === 'descripción' || c === 'descripcion');
+    const fImporte = row.findIndex(c => c === 'importe' || c === 'importe (€)' || c === 'cantidad');
+    if (fFecha !== -1 && fConcepto !== -1 && fImporte !== -1) {
       headerIdx = i;
+      idxFecha = fFecha;
+      idxConcepto = fConcepto;
+      idxImporte = fImporte;
       break;
     }
   }
   if (headerIdx === -1) throw new Error('No se encuentra cabecera fecha/concepto/importe');
-
-  const header = rows[headerIdx].map(c => String(c || '').toLowerCase().trim());
-  const idxFecha = header.indexOf('fecha');
-  const idxConcepto = header.indexOf('concepto');
-  const idxImporte = header.indexOf('importe');
 
   const movs = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -3981,7 +3986,7 @@ function markCardConsolidations(movs) {
       }
     }
 
-    // 2) Traspasos internos: "TRASPASO A <número de tarjeta>"
+    // 2) Traspasos internos: "TRASPASO A <número de tarjeta>" desde la cuenta corriente
     // Detectamos si el concepto contiene "TRASPASO A" y algún número de tarjeta conocida
     if (!m.isCardConsolidation && conceptUp.includes('TRASPASO A ')) {
       for (const c of cardNumbers) {
@@ -3992,6 +3997,18 @@ function markCardConsolidations(movs) {
           m.ignored = false;
           break;
         }
+      }
+    }
+
+    // 3) PAGO RECIBO en tarjeta: es la contrapartida del TARJ.CRDTO desde la cuenta.
+    // Cuando ves esto en una tarjeta, el dinero "entra" en la tarjeta pero salió de la cuenta
+    // (o vino de otro sitio). No es ingreso ni gasto real: es un movimiento interno.
+    const accHere = state.accounts.find(a => a.id === m.accountId);
+    if (accHere && accHere.type === 'card' && !m.isCardConsolidation && !m.isInternalTransfer) {
+      if (conceptUp.includes('PAGO RECIBO') || conceptUp.includes('ABONO TARJ')) {
+        m.isInternalTransfer = true;
+        m.assignedTo = { type: 'internal_transfer', monthKey: MONTHS[new Date(m.date + 'T00:00:00').getMonth()] };
+        m.ignored = false;
       }
     }
   }
