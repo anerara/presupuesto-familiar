@@ -1144,6 +1144,7 @@
   .mov-row.ignored { border-left-color: var(--text-faint); opacity: 0.55; }
   .mov-row.unassigned { border-left-color: var(--warning); }
   .mov-row.consolidation { border-left-color: var(--info); opacity: 0.6; }
+  .mov-row.transfer { border-left-color: var(--accent); opacity: 0.65; }
 
   .mov-date {
     font-size: 0.78rem;
@@ -1623,7 +1624,8 @@
           <option value="assigned">Asignados</option>
           <option value="ignored">Ignorados</option>
         </select>
-        <button class="btn btn-sm" id="btnClearAssign" style="margin-left:auto;">🔄 Resetear asignaciones</button>
+        <button class="btn btn-sm" id="btnRedetect" style="margin-left:auto;" title="Vuelve a detectar consolidaciones y traspasos en los movimientos ya importados">🔄 Re-detectar cargos y traspasos</button>
+        <button class="btn btn-sm" id="btnClearAssign">🔄 Resetear asignaciones</button>
         <button class="btn btn-sm" id="btnClearMovs">🗑️ Borrar todos</button>
       </div>
 
@@ -2096,6 +2098,7 @@ function calcCardSpendInRange(dateFromISO, dateToISO, accountIds = null) {
   return state.movements.reduce((sum, m) => {
     if (m.ignored) return sum;
     if (m.isCardConsolidation) return sum;
+    if (m.isInternalTransfer) return sum; // los traspasos internos NO son gasto
     if (m.amount >= 0) return sum; // solo gastos (negativos)
     const acc = state.accounts.find(a => a.id === m.accountId);
     if (!acc || acc.type !== 'card') return sum;
@@ -3512,6 +3515,7 @@ function assignmentLabel(a) {
   if (a.type === 'nomina_aner') return 'Nómina Aner';
   if (a.type === 'nomina_iratxe') return 'Nómina Iratxe';
   if (a.type === 'ignore') return 'Ignorar';
+  if (a.type === 'internal_transfer') return 'Traspaso interno (no cuenta como gasto)';
   return a.type;
 }
 
@@ -3530,6 +3534,21 @@ document.getElementById('btnClearMovs').onclick = () => {
   renderMovements();
   updateCuadreBadge();
   toast('Movimientos borrados');
+};
+
+document.getElementById('btnRedetect').onclick = () => {
+  const antesCons = state.movements.filter(m => m.isCardConsolidation).length;
+  const antesTr = state.movements.filter(m => m.isInternalTransfer).length;
+  markCardConsolidations(state.movements);
+  const despuesCons = state.movements.filter(m => m.isCardConsolidation).length;
+  const despuesTr = state.movements.filter(m => m.isInternalTransfer).length;
+  const nuevosCons = despuesCons - antesCons;
+  const nuevosTr = despuesTr - antesTr;
+  saveState();
+  renderAll();
+  renderMovements();
+  updateCuadreBadge();
+  toast(`✅ Detectados ${nuevosCons} nuevos cargos y ${nuevosTr} nuevos traspasos internos`);
 };
 
 document.getElementById('btnClearAssign').onclick = () => {
@@ -3712,6 +3731,12 @@ function applyAssignment(mov, target) {
     mov.ignored = true;
     mov.assignedTo = null;
     return;
+  }
+  if (target.type === 'internal_transfer') {
+    mov.ignored = false;
+    mov.isInternalTransfer = true;
+    mov.assignedTo = { type: 'internal_transfer', monthKey: MONTHS[new Date(mov.date + 'T00:00:00').getMonth()] };
+    return; // no crea items en el presupuesto
   }
   mov.ignored = false;
   mov.assignedTo = { ...target };
@@ -3935,14 +3960,38 @@ function unlinkMovementFromBudget(mov) {
 
 function markCardConsolidations(movs) {
   const cards = state.accounts.filter(a => a.type === 'card' && a.chargeConcept);
+  // Extraer los números de tarjeta del chargeConcept para detectar traspasos internos
+  // Ej: chargeConcept "TARJ.CRDTO 4921074068731903" → número "4921074068731903"
+  const cardNumbers = cards.map(c => {
+    const match = String(c.chargeConcept).match(/\d{10,}/);
+    return match ? { num: match[0], cardId: c.id, name: c.name } : null;
+  }).filter(Boolean);
+
   for (const m of movs) {
-    if (m.accountId !== 'cuenta') continue;
     const conceptUp = (m.concept || '').toUpperCase();
-    for (const card of cards) {
-      if (conceptUp.includes(card.chargeConcept.toUpperCase())) {
-        m.isCardConsolidation = true;
-        m.cardId = card.id;
-        break;
+
+    // 1) Consolidaciones TARJ.CRDTO (solo en cuenta corriente)
+    if (m.accountId === 'cuenta') {
+      for (const card of cards) {
+        if (conceptUp.includes(card.chargeConcept.toUpperCase())) {
+          m.isCardConsolidation = true;
+          m.cardId = card.id;
+          break;
+        }
+      }
+    }
+
+    // 2) Traspasos internos: "TRASPASO A <número de tarjeta>"
+    // Detectamos si el concepto contiene "TRASPASO A" y algún número de tarjeta conocida
+    if (!m.isCardConsolidation && conceptUp.includes('TRASPASO A ')) {
+      for (const c of cardNumbers) {
+        if (conceptUp.includes(c.num)) {
+          m.isInternalTransfer = true;
+          m.transferToCardId = c.cardId;
+          m.assignedTo = { type: 'internal_transfer', monthKey: MONTHS[new Date(m.date + 'T00:00:00').getMonth()] };
+          m.ignored = false;
+          break;
+        }
       }
     }
   }
@@ -3967,9 +4016,9 @@ function renderMovements() {
     uniqMonths.map(ym => `<option value="${ym}">${ym}</option>`).join('');
   monthSel.value = movFilters.month;
 
-  const totalIn = movs.filter(m => m.amount > 0 && !m.ignored && !m.isCardConsolidation).reduce((s, m) => s + m.amount, 0);
-  const totalOut = movs.filter(m => m.amount < 0 && !m.ignored && !m.isCardConsolidation).reduce((s, m) => s + m.amount, 0);
-  const unassignedCount = movs.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation).length;
+  const totalIn = movs.filter(m => m.amount > 0 && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer).reduce((s, m) => s + m.amount, 0);
+  const totalOut = movs.filter(m => m.amount < 0 && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer).reduce((s, m) => s + m.amount, 0);
+  const unassignedCount = movs.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer).length;
   document.getElementById('movStats').innerHTML = `
     <div class="mov-stat"><div class="mov-stat-label">Total mov.</div><div class="mov-stat-value">${movs.length}</div></div>
     <div class="mov-stat"><div class="mov-stat-label">Ingresos</div><div class="mov-stat-value ok">${fmt(totalIn)}</div></div>
@@ -3984,7 +4033,7 @@ function renderMovements() {
   }
   if (movFilters.account !== 'all') filtered = filtered.filter(m => m.accountId === movFilters.account);
   if (movFilters.month !== 'all') filtered = filtered.filter(m => m.date.startsWith(movFilters.month));
-  if (movFilters.status === 'unassigned') filtered = filtered.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation);
+  if (movFilters.status === 'unassigned') filtered = filtered.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer);
   else if (movFilters.status === 'assigned') filtered = filtered.filter(m => m.assignedTo);
   else if (movFilters.status === 'ignored') filtered = filtered.filter(m => m.ignored || m.isCardConsolidation);
 
@@ -4012,6 +4061,7 @@ function renderMovementRow(m) {
   const accName = acc ? acc.name : m.accountId;
   let status = 'unassigned', tag = '⚠️ Sin asignar';
   if (m.isCardConsolidation) { status = 'consolidation'; tag = '🔵 Cargo tarjeta (consolidado)'; }
+  else if (m.isInternalTransfer || m.assignedTo?.type === 'internal_transfer') { status = 'transfer'; tag = '🔀 Traspaso interno'; }
   else if (m.ignored) { status = 'ignored'; tag = '💤 Ignorado'; }
   else if (m.assignedTo) { status = 'assigned'; tag = '✓ ' + assignmentLabel(m.assignedTo); }
   const sign = m.amount >= 0 ? 'positive' : 'negative';
@@ -4073,6 +4123,7 @@ function showAssignModal(movId) {
   const options = [];
   options.push({ value: 'unassign', label: '— Sin asignar —' });
   options.push({ value: 'ignore', label: '💤 Ignorar (no afecta al balance)' });
+  options.push({ value: 'internal_transfer', label: '🔀 Traspaso interno (entre mis cuentas)' });
   // Nóminas
   options.push({ value: '__group_nom', label: '─── 💰 Nóminas ───', disabled: true });
   options.push({ value: 'nomina_aner', label: '💰 Nómina Aner' });
@@ -4254,6 +4305,10 @@ function showAssignModal(movId) {
     } else if (v === 'ignore') {
       unlinkMovementFromBudget(mov);
       target = { type: 'ignore' };
+    } else if (v === 'internal_transfer') {
+      unlinkMovementFromBudget(mov);
+      target = { type: 'internal_transfer' };
+      mov.isInternalTransfer = true;
     } else if (v === 'nomina_aner') target = { type: 'nomina_aner' };
     else if (v === 'nomina_iratxe') target = { type: 'nomina_iratxe' };
     else if (v.startsWith('fixed:')) target = { type: 'fixed', concept: v.substring(6) };
@@ -4321,7 +4376,7 @@ function showAssignModal(movId) {
 function updateCuadreBadge() {
   const badge = document.getElementById('cuadreBadge');
   if (!badge) return;
-  const unassigned = state.movements.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation).length;
+  const unassigned = state.movements.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer).length;
   if (unassigned > 0) {
     badge.textContent = unassigned;
     badge.style.display = 'inline-block';
@@ -4342,9 +4397,10 @@ function renderCuadre() {
   }
 
   const movsImp = state.movements.filter(m => lastImp.movementIds.includes(m.id));
-  const auto = movsImp.filter(m => m.assignedTo && !m.ignored).sort((a, b) => a.date.localeCompare(b.date));
+  const transfers = movsImp.filter(m => m.isInternalTransfer).sort((a, b) => a.date.localeCompare(b.date));
+  const auto = movsImp.filter(m => m.assignedTo && !m.ignored && !m.isInternalTransfer).sort((a, b) => a.date.localeCompare(b.date));
   const cons = movsImp.filter(m => m.isCardConsolidation).sort((a, b) => a.date.localeCompare(b.date));
-  const unass = movsImp.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation).sort((a, b) => a.date.localeCompare(b.date));
+  const unass = movsImp.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer).sort((a, b) => a.date.localeCompare(b.date));
   const ign = movsImp.filter(m => m.ignored).sort((a, b) => a.date.localeCompare(b.date));
 
   const date = new Date(lastImp.timestamp);
@@ -4389,6 +4445,15 @@ function renderCuadre() {
         Estos cargos son la suma de compras hechas con tarjeta. No cuentan como gasto extra para no duplicar (las compras individuales están en el extracto de la tarjeta).
       </p>
       ${cons.map(m => renderMovementRow(m)).join('')}
+    </div>` : ''}
+
+    ${transfers.length > 0 ? `
+    <div class="cuadre-block">
+      <h3>🔀 Traspasos internos (${transfers.length})</h3>
+      <p style="font-size:0.82rem; color:var(--text-dim); margin-bottom:10px;">
+        Detectados automáticamente traspasos a tus propias tarjetas. No cuentan como gasto porque el dinero se queda en tu ecosistema.
+      </p>
+      ${transfers.map(m => renderMovementRow(m)).join('')}
     </div>` : ''}
 
     ${ign.length > 0 ? `
