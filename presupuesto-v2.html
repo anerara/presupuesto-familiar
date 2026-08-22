@@ -4239,15 +4239,21 @@ function showAssignModal(movId) {
     <div class="form-group">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0;">
         <input type="checkbox" id="learnRuleChk" checked style="width:auto;">
-        <span style="font-size:0.85rem; color:var(--text);">Aprender esta asignación (crea regla automática)</span>
+        <span style="font-size:0.85rem; color:var(--text);">Aprender esta asignación (crea regla para futuros movs)</span>
       </label>
       <input type="text" id="rulePattern" placeholder="Patrón (ej. BASKEPENSIONES)" style="margin-top:6px;">
-      <div id="rulePatternHint" style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Si el concepto de un futuro movimiento contiene este texto, se asignará solo.</div>
+      <div id="rulePatternHint" style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Se aplicará automáticamente cuando importes nuevos movs cuyo concepto contenga este texto.</div>
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; margin-top:8px;">
         <input type="checkbox" id="ruleFilterByAmount" style="width:auto;">
         <span style="font-size:0.82rem; color:var(--text-dim);">Filtrar también por importe (útil cuando varios conceptos comparten texto)</span>
       </label>
       <input type="text" id="ruleAmount" placeholder="Importe exacto (ej. 23.55)" style="margin-top:4px; display:none;">
+    </div>
+    <div class="form-group" id="applyExistingGroup" style="display:none;">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0;">
+        <input type="checkbox" id="applyExistingChk" style="width:auto;">
+        <span style="font-size:0.85rem; color:var(--text);">Aplicar también a movs ya importados que coincidan</span>
+      </label>
       <div id="rulePatternMatches" style="font-size:0.78rem; margin-top:6px; padding:6px 8px; background:var(--bg-elevated); border-radius:4px; display:none;"></div>
     </div>
     <div class="modal-actions">
@@ -4304,10 +4310,20 @@ function showAssignModal(movId) {
   // Feedback en vivo: cuántos movimientos coinciden con el patrón actual
   function refreshPatternMatches() {
     const box = document.getElementById('rulePatternMatches');
-    if (!box) return;
+    const applyGroup = document.getElementById('applyExistingGroup');
+    if (!box || !applyGroup) return;
+
     const learn = document.getElementById('learnRuleChk').checked;
     const pattern = ruleInput.value.trim();
-    if (!learn || !pattern) { box.style.display = 'none'; return; }
+    const applyExisting = document.getElementById('applyExistingChk').checked;
+
+    // Ocultar el grupo de "aplicar a existentes" si no hay patrón
+    if (!pattern) {
+      applyGroup.style.display = 'none';
+      box.style.display = 'none';
+      return;
+    }
+
     const patUp = pattern.toUpperCase();
     const filterByAmount = document.getElementById('ruleFilterByAmount')?.checked;
     const amountInput = document.getElementById('ruleAmount');
@@ -4317,64 +4333,80 @@ function showAssignModal(movId) {
       !m.isCardConsolidation &&
       !m.ignored &&
       !m.isInternalTransfer &&
+      m.id !== mov.id &&  // excluir el mov actual (que ya se asigna aparte)
       (m.concept || '').toUpperCase().includes(patUp)
     );
     if (targetAmount !== null && !isNaN(targetAmount)) {
       matches = matches.filter(m => Math.abs(Math.abs(m.amount) - Math.abs(targetAmount)) < 0.01);
     }
-    // Ordenar por fecha ascendente para el listado
-    matches.sort((a, b) => a.date.localeCompare(b.date));
+    // Solo interesan los que aún no están asignados
+    const disponibles = matches.filter(m => !m.assignedTo);
+    disponibles.sort((a, b) => a.date.localeCompare(b.date));
 
-    const yaAsignados = matches.filter(m => m.assignedTo).length;
-    const sinAsignar = matches.length - yaAsignados;
-    box.style.display = 'block';
-    let color = 'var(--info)';
-    if (matches.length === 0) color = 'var(--warning)';
-    else if (matches.length > 20) color = 'var(--warning)';
-    box.style.color = color;
-    const amtSuffix = (targetAmount !== null && !isNaN(targetAmount)) ? ` de ${fmt(targetAmount)}` : '';
-
-    if (matches.length === 0) {
-      box.innerHTML = '⚠️ Ningún movimiento coincide con este patrón — la regla no servirá';
+    // Mostrar el grupo solo si hay coincidencias disponibles
+    if (disponibles.length === 0) {
+      applyGroup.style.display = 'none';
+      box.style.display = 'none';
       return;
     }
 
-    // Construir listado de coincidencias con posibilidad de plegar/desplegar
-    const rows = matches.map(m => {
-      const asigLabel = m.assignedTo ? '✓ ' + assignmentLabel(m.assignedTo).slice(0, 25) : '⚠️ sin asignar';
-      const asigCol = m.assignedTo ? 'var(--income)' : 'var(--warning)';
-      return `<div style="display:grid; grid-template-columns:60px 1fr 70px 90px; gap:6px; font-size:0.75rem; padding:2px 4px; align-items:center; color:var(--text-dim);">
-        <span>${fmtDateShort(m.date)}</span>
-        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(m.concept)}</span>
-        <span style="text-align:right; font-variant-numeric:tabular-nums; color:${m.amount>=0?'var(--income)':'var(--expense)'};">${fmt(m.amount)}</span>
-        <span style="text-align:right; color:${asigCol}; font-size:0.7rem;">${asigLabel}</span>
-      </div>`;
-    }).join('');
+    applyGroup.style.display = 'block';
 
-    // Si son pocos (<=6), mostrar directamente. Si son muchos, plegable.
-    const collapsible = matches.length > 6;
-    const listId = 'matchListInner_' + Date.now();
+    // Actualizar el label del checkbox para incluir el contador
+    const chkLabel = applyGroup.querySelector('label span');
+    chkLabel.textContent = `Aplicar también a ${disponibles.length} movs ya importados que coinciden`;
+
+    if (!applyExisting) {
+      box.style.display = 'none';
+      return;
+    }
+
+    box.style.display = 'block';
+    box.style.color = 'var(--text-dim)';
+
+    // Construir listado con checkboxes de selección (todos marcados por defecto)
+    const rows = disponibles.map((m, idx) => `
+      <label style="display:grid; grid-template-columns:20px 60px 1fr 70px; gap:6px; font-size:0.78rem; padding:4px; align-items:center; cursor:pointer; border-radius:4px;" data-mov-checkbox-row>
+        <input type="checkbox" data-mov-id="${m.id}" checked style="width:auto; margin:0;">
+        <span style="color:var(--text-dim);">${fmtDateShort(m.date)}</span>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);">${escapeHTML(m.concept)}</span>
+        <span style="text-align:right; font-variant-numeric:tabular-nums; color:${m.amount>=0?'var(--income)':'var(--expense)'};">${fmt(m.amount)}</span>
+      </label>
+    `).join('');
+
+    const counterId = 'matchCounter_' + Date.now();
     box.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-        <span>🎯 <strong>${matches.length}</strong> movimientos coinciden${amtSuffix} (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)</span>
-        ${collapsible ? `<button type="button" data-toggle-matches style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:0.72rem; padding:2px 8px; border-radius:4px; cursor:pointer;">Ver detalle</button>` : ''}
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+        <span><strong id="${counterId}">${disponibles.length}</strong> de ${disponibles.length} seleccionados</span>
+        <div style="display:flex; gap:4px;">
+          <button type="button" data-select-all style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:0.7rem; padding:2px 6px; border-radius:4px; cursor:pointer;">Todos</button>
+          <button type="button" data-select-none style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:0.7rem; padding:2px 6px; border-radius:4px; cursor:pointer;">Ninguno</button>
+        </div>
       </div>
-      <div id="${listId}" style="margin-top:8px; max-height:220px; overflow-y:auto; ${collapsible ? 'display:none;' : ''}">
+      <div style="max-height:220px; overflow-y:auto; border-top:1px solid var(--border); padding-top:4px;">
         ${rows}
       </div>
     `;
-    if (collapsible) {
-      const btn = box.querySelector('[data-toggle-matches]');
-      const list = document.getElementById(listId);
-      btn.onclick = () => {
-        const visible = list.style.display !== 'none';
-        list.style.display = visible ? 'none' : 'block';
-        btn.textContent = visible ? 'Ver detalle' : 'Ocultar';
-      };
-    }
+
+    // Actualizar contador cuando cambian checkboxes
+    const updateCount = () => {
+      const total = box.querySelectorAll('[data-mov-id]').length;
+      const checked = box.querySelectorAll('[data-mov-id]:checked').length;
+      document.getElementById(counterId).textContent = checked;
+    };
+    box.querySelectorAll('[data-mov-id]').forEach(cb => cb.onchange = updateCount);
+    box.querySelector('[data-select-all]').onclick = () => {
+      box.querySelectorAll('[data-mov-id]').forEach(cb => cb.checked = true);
+      updateCount();
+    };
+    box.querySelector('[data-select-none]').onclick = () => {
+      box.querySelectorAll('[data-mov-id]').forEach(cb => cb.checked = false);
+      updateCount();
+    };
   }
   ruleInput.oninput = refreshPatternMatches;
   document.getElementById('learnRuleChk').onchange = refreshPatternMatches;
+  document.getElementById('applyExistingChk').onchange = refreshPatternMatches;
 
   // Listeners del filtro por importe
   const chkAmt = document.getElementById('ruleFilterByAmount');
@@ -4435,28 +4467,32 @@ function showAssignModal(movId) {
     const filterByAmount = document.getElementById('ruleFilterByAmount').checked;
     const amountInput = document.getElementById('ruleAmount');
     const ruleAmount = filterByAmount ? parseFloat(String(amountInput.value).replace(',', '.')) : null;
-    let retroCount = 0;
+
+    // 1) Crear regla si se marcó "Aprender" (para futuras importaciones)
     if (learn && pattern && target) {
       const newRule = { id: genId(), pattern, target: { ...target } };
       if (ruleAmount !== null && !isNaN(ruleAmount)) newRule.amount = ruleAmount;
-      // Comparar duplicados considerando también el importe
       const exists = state.rules.some(r =>
         r.pattern.toUpperCase() === pattern.toUpperCase() &&
         JSON.stringify(r.target) === JSON.stringify(target) &&
         (r.amount === newRule.amount || (r.amount === undefined && newRule.amount === undefined))
       );
-      if (!exists) {
-        state.rules.push(newRule);
-        // Aplicar la nueva regla retroactivamente a los movimientos ya importados
-        // que estén sin asignar y no ignorados
-        for (const other of state.movements) {
-          if (other.id === mov.id) continue;
-          if (other.assignedTo || other.ignored || other.isCardConsolidation) continue;
-          if (matchRule(newRule, other)) {
-            applyAssignment(other, newRule.target);
-            retroCount++;
-          }
-        }
+      if (!exists) state.rules.push(newRule);
+    }
+
+    // 2) Aplicar a movimientos existentes SI se marcó "Aplicar también a…"
+    // Solo los que el usuario ha dejado marcados en los checkboxes
+    let appliedCount = 0;
+    const applyExisting = document.getElementById('applyExistingChk').checked;
+    if (applyExisting && target) {
+      const selectedIds = Array.from(document.querySelectorAll('[data-mov-id]:checked')).map(cb => cb.dataset.movId);
+      for (const otherId of selectedIds) {
+        const other = state.movements.find(x => x.id === otherId);
+        if (!other) continue;
+        if (other.id === mov.id) continue;
+        if (other.assignedTo || other.ignored || other.isCardConsolidation) continue;
+        applyAssignment(other, target);
+        appliedCount++;
       }
     }
 
@@ -4464,10 +4500,10 @@ function showAssignModal(movId) {
     closeModal();
     if (currentView === 'movimientos') renderMovements();
     else if (currentView === 'cuadre') renderCuadre();
-    renderTripleBalance(); // refrescar panel de balances
+    renderTripleBalance();
     updateCuadreBadge();
-    if (retroCount > 0) {
-      toast(`Asignado + ${retroCount} movimientos similares auto-asignados`);
+    if (appliedCount > 0) {
+      toast(`Asignado + ${appliedCount} movs seleccionados`);
     } else {
       toast('Asignado');
     }
