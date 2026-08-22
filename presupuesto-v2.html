@@ -4316,11 +4316,15 @@ function showAssignModal(movId) {
     let matches = state.movements.filter(m =>
       !m.isCardConsolidation &&
       !m.ignored &&
+      !m.isInternalTransfer &&
       (m.concept || '').toUpperCase().includes(patUp)
     );
     if (targetAmount !== null && !isNaN(targetAmount)) {
       matches = matches.filter(m => Math.abs(Math.abs(m.amount) - Math.abs(targetAmount)) < 0.01);
     }
+    // Ordenar por fecha ascendente para el listado
+    matches.sort((a, b) => a.date.localeCompare(b.date));
+
     const yaAsignados = matches.filter(m => m.assignedTo).length;
     const sinAsignar = matches.length - yaAsignados;
     box.style.display = 'block';
@@ -4329,9 +4333,45 @@ function showAssignModal(movId) {
     else if (matches.length > 20) color = 'var(--warning)';
     box.style.color = color;
     const amtSuffix = (targetAmount !== null && !isNaN(targetAmount)) ? ` de ${fmt(targetAmount)}` : '';
-    box.innerHTML = matches.length === 0
-      ? '⚠️ Ningún movimiento coincide con este patrón — la regla no servirá'
-      : `🎯 <strong>${matches.length}</strong> movimientos coinciden${amtSuffix} (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)`;
+
+    if (matches.length === 0) {
+      box.innerHTML = '⚠️ Ningún movimiento coincide con este patrón — la regla no servirá';
+      return;
+    }
+
+    // Construir listado de coincidencias con posibilidad de plegar/desplegar
+    const rows = matches.map(m => {
+      const asigLabel = m.assignedTo ? '✓ ' + assignmentLabel(m.assignedTo).slice(0, 25) : '⚠️ sin asignar';
+      const asigCol = m.assignedTo ? 'var(--income)' : 'var(--warning)';
+      return `<div style="display:grid; grid-template-columns:60px 1fr 70px 90px; gap:6px; font-size:0.75rem; padding:2px 4px; align-items:center; color:var(--text-dim);">
+        <span>${fmtDateShort(m.date)}</span>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(m.concept)}</span>
+        <span style="text-align:right; font-variant-numeric:tabular-nums; color:${m.amount>=0?'var(--income)':'var(--expense)'};">${fmt(m.amount)}</span>
+        <span style="text-align:right; color:${asigCol}; font-size:0.7rem;">${asigLabel}</span>
+      </div>`;
+    }).join('');
+
+    // Si son pocos (<=6), mostrar directamente. Si son muchos, plegable.
+    const collapsible = matches.length > 6;
+    const listId = 'matchListInner_' + Date.now();
+    box.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span>🎯 <strong>${matches.length}</strong> movimientos coinciden${amtSuffix} (${sinAsignar} sin asignar, ${yaAsignados} ya asignados)</span>
+        ${collapsible ? `<button type="button" data-toggle-matches style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:0.72rem; padding:2px 8px; border-radius:4px; cursor:pointer;">Ver detalle</button>` : ''}
+      </div>
+      <div id="${listId}" style="margin-top:8px; max-height:220px; overflow-y:auto; ${collapsible ? 'display:none;' : ''}">
+        ${rows}
+      </div>
+    `;
+    if (collapsible) {
+      const btn = box.querySelector('[data-toggle-matches]');
+      const list = document.getElementById(listId);
+      btn.onclick = () => {
+        const visible = list.style.display !== 'none';
+        list.style.display = visible ? 'none' : 'block';
+        btn.textContent = visible ? 'Ver detalle' : 'Ocultar';
+      };
+    }
   }
   ruleInput.oninput = refreshPatternMatches;
   document.getElementById('learnRuleChk').onchange = refreshPatternMatches;
