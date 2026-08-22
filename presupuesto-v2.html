@@ -1129,7 +1129,7 @@
 
   .mov-row {
     display: grid;
-    grid-template-columns: 82px 1fr 100px 30px;
+    grid-template-columns: 22px 82px 1fr 100px 30px;
     gap: 10px;
     align-items: center;
     padding: 8px 10px;
@@ -1140,9 +1140,47 @@
     transition: background 0.15s;
   }
   .mov-row:hover { background: var(--bg-input); }
+  .mov-row.row-selected { background: rgba(88, 166, 255, 0.12); border-left-color: var(--accent) !important; }
   .mov-row.assigned { border-left-color: var(--income); }
   .mov-row.ignored { border-left-color: var(--text-faint); opacity: 0.55; }
   .mov-row.unassigned { border-left-color: var(--warning); }
+  .mov-check { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--accent); }
+  .mov-check-placeholder { display: inline-block; width: 16px; height: 16px; }
+
+  .cuadre-mov-row {
+    display: grid;
+    grid-template-columns: 22px 82px 1fr 100px 200px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+  }
+  .cuadre-mov-row.row-selected { background: rgba(88, 166, 255, 0.12); }
+
+  /* Barra de acciones flotante para selección múltiple */
+  .bulk-action-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    display: none;
+    gap: 12px;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 400;
+    max-width: calc(100vw - 32px);
+    flex-wrap: wrap;
+  }
+  .bulk-action-bar.active { display: flex; }
+  .bulk-count { font-weight: 600; color: var(--accent); font-size: 0.95rem; }
+  .bulk-action-bar .btn { padding: 6px 12px; font-size: 0.85rem; }
   .mov-row.consolidation { border-left-color: var(--info); opacity: 0.6; }
   .mov-row.transfer { border-left-color: var(--accent); opacity: 0.65; }
 
@@ -1195,7 +1233,7 @@
   .mov-action:hover { color: var(--accent); background: var(--bg-card); }
 
   @media (max-width: 600px) {
-    .mov-row { grid-template-columns: 65px 1fr 90px 28px; font-size: 0.8rem; }
+    .mov-row { grid-template-columns: 22px 65px 1fr 90px 28px; font-size: 0.8rem; }
   }
 
   /* ========= CUADRE ========= */
@@ -1217,18 +1255,6 @@
     text-align: center;
   }
 
-  .cuadre-mov-row {
-    display: grid;
-    grid-template-columns: 82px 1fr 100px 200px;
-    gap: 10px;
-    align-items: center;
-    padding: 10px;
-    background: var(--bg-elevated);
-    border-radius: var(--radius-sm);
-    margin-bottom: 4px;
-    font-size: 0.85rem;
-  }
-
   .cuadre-assign-select {
     background: var(--bg-input);
     border: 1px solid var(--warning);
@@ -1244,13 +1270,14 @@
 
   @media (max-width: 700px) {
     .cuadre-mov-row {
-      grid-template-columns: 1fr 100px;
+      grid-template-columns: 22px 1fr 100px;
       gap: 6px;
     }
-    .cuadre-mov-row .mov-date { grid-column: 1; }
-    .cuadre-mov-row .mov-amount { grid-column: 2; text-align: right; }
-    .cuadre-mov-row .mov-concept { grid-column: 1 / -1; }
-    .cuadre-mov-row .cuadre-assign-select { grid-column: 1 / -1; }
+    .cuadre-mov-row .mov-check { grid-column: 1; grid-row: 1 / 3; }
+    .cuadre-mov-row .mov-date { grid-column: 2; }
+    .cuadre-mov-row .mov-amount { grid-column: 3; text-align: right; }
+    .cuadre-mov-row .mov-concept { grid-column: 2 / -1; }
+    .cuadre-mov-row .cuadre-assign-select { grid-column: 2 / -1; }
   }
 
   /* ========= REGLAS ========= */
@@ -1671,6 +1698,14 @@
 </div>
 
 <!-- Modal genérico -->
+<!-- Barra flotante de acciones para selección múltiple -->
+<div class="bulk-action-bar" id="bulkActionBar">
+  <span class="bulk-count"><span id="bulkCount">0</span> movimientos seleccionados</span>
+  <button class="btn btn-primary btn-sm" id="bulkAssignBtn">📌 Asignar en bloque…</button>
+  <button class="btn btn-sm" id="bulkIgnoreBtn">💤 Ignorar</button>
+  <button class="btn btn-sm" id="bulkClearBtn">✕ Deseleccionar</button>
+</div>
+
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal" id="modalContent"></div>
 </div>
@@ -4017,6 +4052,7 @@ function markCardConsolidations(movs) {
 /* ---------- Renderizado: MOVIMIENTOS ---------- */
 
 let movFilters = { search: '', account: 'all', month: 'all', status: 'all' };
+let selectedMovIds = new Set(); // ids de movimientos seleccionados con checkbox
 
 function renderMovements() {
   const container = document.getElementById('movList');
@@ -4082,8 +4118,14 @@ function renderMovementRow(m) {
   else if (m.ignored) { status = 'ignored'; tag = '💤 Ignorado'; }
   else if (m.assignedTo) { status = 'assigned'; tag = '✓ ' + assignmentLabel(m.assignedTo); }
   const sign = m.amount >= 0 ? 'positive' : 'negative';
+  const isSelected = selectedMovIds.has(m.id);
+  // No permitir seleccionar consolidations ni traspasos internos
+  const canSelect = !m.isCardConsolidation && !m.isInternalTransfer;
   return `
-    <div class="mov-row ${status}" data-id="${m.id}">
+    <div class="mov-row ${status} ${isSelected ? 'row-selected' : ''}" data-id="${m.id}">
+      ${canSelect
+        ? `<input type="checkbox" class="mov-check" data-check-id="${m.id}" ${isSelected ? 'checked' : ''} title="Seleccionar para asignar en bloque">`
+        : `<span class="mov-check-placeholder"></span>`}
       <div class="mov-date">${fmtDateShort(m.date)}</div>
       <div class="mov-concept" title="${escapeHTML(m.concept)}">
         ${escapeHTML(m.concept)}
@@ -4616,8 +4658,10 @@ function renderCuadre() {
 
 function renderCuadreRow(m) {
   const sign = m.amount >= 0 ? 'positive' : 'negative';
+  const isSelected = selectedMovIds.has(m.id);
   return `
-    <div class="cuadre-mov-row">
+    <div class="cuadre-mov-row ${isSelected ? 'row-selected' : ''}">
+      <input type="checkbox" class="mov-check" data-check-id="${m.id}" ${isSelected ? 'checked' : ''} title="Seleccionar para asignar en bloque">
       <div class="mov-date">${fmtDateShort(m.date)}</div>
       <div class="mov-concept" data-quick-assign="${m.id}" title="Click para asignar">${escapeHTML(m.concept)}</div>
       <div class="mov-amount ${sign}">${fmt(m.amount)}</div>
@@ -5022,6 +5066,275 @@ function fuseV1(v1, mode) {
   });
 
   return { added, updated, skipped, cleaned };
+}
+
+/* ============================================================
+   ============ SELECCIÓN MÚLTIPLE DE MOVIMIENTOS ==============
+   ============================================================ */
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkActionBar');
+  const count = document.getElementById('bulkCount');
+  if (!bar || !count) return;
+  const n = selectedMovIds.size;
+  count.textContent = n;
+  bar.classList.toggle('active', n > 0);
+}
+
+function toggleMovSelection(movId, checked) {
+  if (checked) selectedMovIds.add(movId);
+  else selectedMovIds.delete(movId);
+  updateBulkBar();
+  document.querySelectorAll(`[data-id="${movId}"]`).forEach(el => {
+    if (el.classList.contains('mov-row') || el.classList.contains('cuadre-mov-row')) {
+      el.classList.toggle('row-selected', checked);
+    }
+  });
+  document.querySelectorAll(`[data-check-id="${movId}"]`).forEach(el => {
+    const parent = el.closest('.mov-row, .cuadre-mov-row');
+    if (parent) parent.classList.toggle('row-selected', checked);
+  });
+}
+
+// Delegación global para checkboxes de movs
+document.addEventListener('change', (ev) => {
+  if (ev.target.classList.contains('mov-check')) {
+    const id = ev.target.dataset.checkId;
+    if (id) toggleMovSelection(id, ev.target.checked);
+  }
+});
+document.addEventListener('click', (ev) => {
+  if (ev.target.classList.contains('mov-check')) ev.stopPropagation();
+});
+
+document.getElementById('bulkClearBtn').onclick = () => {
+  selectedMovIds.clear();
+  updateBulkBar();
+  if (currentView === 'movimientos') renderMovements();
+  else if (currentView === 'cuadre') renderCuadre();
+};
+
+document.getElementById('bulkIgnoreBtn').onclick = () => {
+  const n = selectedMovIds.size;
+  if (n === 0) return;
+  if (!confirm(`¿Marcar ${n} movimientos como Ignorados? (no cuentan en el balance)`)) return;
+  for (const id of selectedMovIds) {
+    const m = state.movements.find(x => x.id === id);
+    if (m) {
+      unlinkMovementFromBudget(m);
+      m.ignored = true;
+      m.assignedTo = null;
+    }
+  }
+  selectedMovIds.clear();
+  saveState();
+  updateBulkBar();
+  renderAll();
+  if (currentView === 'movimientos') renderMovements();
+  else if (currentView === 'cuadre') renderCuadre();
+  updateCuadreBadge();
+  toast(`💤 ${n} movimientos ignorados`);
+};
+
+document.getElementById('bulkAssignBtn').onclick = () => {
+  const ids = Array.from(selectedMovIds);
+  if (ids.length === 0) return;
+  showBulkAssignModal(ids);
+};
+
+function showBulkAssignModal(movIds) {
+  const movs = movIds.map(id => state.movements.find(x => x.id === id)).filter(Boolean);
+  if (movs.length === 0) return;
+
+  const totalAmount = movs.reduce((s, m) => s + m.amount, 0);
+  const hasIncome = movs.some(m => m.amount > 0);
+  const hasExpense = movs.some(m => m.amount < 0);
+  const isMixed = hasIncome && hasExpense;
+
+  const fixedSet = new Map();
+  MONTHS.forEach(mk => {
+    const m = state.months[mk];
+    if (!m) return;
+    (m.fixed || []).forEach(f => {
+      const cur = fixedSet.get(f.concept) || { count: 0, lastAmount: f.amount };
+      cur.count++; cur.lastAmount = f.amount;
+      fixedSet.set(f.concept, cur);
+    });
+  });
+  const bolsasGasto = new Map();
+  const bolsasIng = new Map();
+  MONTHS.forEach(mk => {
+    const m = state.months[mk];
+    if (!m) return;
+    (m.puntuales || []).forEach(p => {
+      if (p.source === 'imported' && p.linkedMovIds?.length > 0) {
+        const cur = bolsasGasto.get(p.concept) || { totalMovs: 0 };
+        cur.totalMovs += p.linkedMovIds.length;
+        bolsasGasto.set(p.concept, cur);
+      }
+    });
+    (m.incomePuntuales || []).forEach(p => {
+      if (p.source === 'imported' && p.linkedMovIds?.length > 0) {
+        const cur = bolsasIng.get(p.concept) || { totalMovs: 0 };
+        cur.totalMovs += p.linkedMovIds.length;
+        bolsasIng.set(p.concept, cur);
+      }
+    });
+  });
+
+  const options = [];
+  options.push({ value: 'ignore', label: '💤 Ignorar todos' });
+  options.push({ value: 'internal_transfer', label: '🔀 Traspaso interno (todos)' });
+  options.push({ value: '__grp1', label: '─── 💰 Nóminas ───', disabled: true });
+  options.push({ value: 'nomina_aner', label: '💰 Nómina Aner' });
+  options.push({ value: 'nomina_iratxe', label: '💰 Nómina Iratxe' });
+
+  if (!hasIncome || isMixed) {
+    const fijosArr = [...fixedSet.entries()].sort((a, b) => b[1].count - a[1].count);
+    if (fijosArr.length > 0) {
+      options.push({ value: '__grp2', label: '─── 📌 Gastos fijos ───', disabled: true });
+      fijosArr.forEach(([c, meta]) => options.push({ value: 'fixed:' + c, label: `📌 ${c} (${fmt(meta.lastAmount)})` }));
+    }
+    if (bolsasGasto.size > 0) {
+      options.push({ value: '__grp3', label: '─── 🎒 Bolsas de puntuales ───', disabled: true });
+      [...bolsasGasto.entries()].sort((a, b) => b[1].totalMovs - a[1].totalMovs)
+        .forEach(([c, meta]) => options.push({ value: 'puntual_bag:' + c, label: `🎒 ${c} (${meta.totalMovs} movs)` }));
+    }
+    options.push({ value: '__grp4', label: '─── ➕ Crear nuevo ───', disabled: true });
+    options.push({ value: 'new_puntual_gasto', label: '➕ Nuevo gasto puntual…' });
+    options.push({ value: 'new_fixed', label: '➕ Nuevo gasto fijo…' });
+  }
+  if (hasIncome || isMixed) {
+    if (bolsasIng.size > 0) {
+      options.push({ value: '__grp5', label: '─── 🎒 Bolsas de ingresos ───', disabled: true });
+      [...bolsasIng.entries()].sort((a, b) => b[1].totalMovs - a[1].totalMovs)
+        .forEach(([c, meta]) => options.push({ value: 'ingreso_bag:' + c, label: `🎒 ${c} (${meta.totalMovs} movs)` }));
+    }
+    options.push({ value: '__grp6', label: '─── ➕ Crear nuevo ───', disabled: true });
+    options.push({ value: 'new_puntual_ingreso', label: '➕ Nuevo ingreso puntual…' });
+  }
+
+  const movsPreview = [...movs].sort((a, b) => a.date.localeCompare(b.date));
+  const previewRows = movsPreview.slice(0, 10).map(m => `
+    <div style="display:grid; grid-template-columns:60px 1fr 80px; gap:6px; font-size:0.75rem; padding:2px 4px; color:var(--text-dim);">
+      <span>${fmtDateShort(m.date)}</span>
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(m.concept)}</span>
+      <span style="text-align:right; font-variant-numeric:tabular-nums; color:${m.amount>=0?'var(--income)':'var(--expense)'};">${fmt(m.amount)}</span>
+    </div>
+  `).join('');
+  const moreCount = movs.length > 10 ? movs.length - 10 : 0;
+
+  openModal(`
+    <h2>Asignar ${movs.length} movimientos en bloque</h2>
+    <div style="background:var(--bg-elevated); padding:10px 12px; border-radius:var(--radius-sm); margin-bottom:12px;">
+      <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:4px;">Total: <strong style="color:${totalAmount>=0?'var(--income)':'var(--expense)'}; font-size:1rem;">${fmt(totalAmount)}</strong></div>
+      <div style="margin-top:6px; max-height:200px; overflow-y:auto;">
+        ${previewRows}
+        ${moreCount > 0 ? `<div style="font-size:0.72rem; color:var(--text-faint); text-align:center; padding:4px;">… y ${moreCount} más</div>` : ''}
+      </div>
+      ${isMixed ? `<div style="color:var(--warning); font-size:0.78rem; margin-top:6px;">⚠️ Hay movs positivos y negativos mezclados. Elige una opción que aplique a todos.</div>` : ''}
+    </div>
+    <div class="form-group">
+      <label>Asignar todos a…</label>
+      <select id="bulkAssignSel">${options.map(o => `<option value="${escapeHTML(o.value)}" ${o.disabled?'disabled':''}>${escapeHTML(o.label)}</option>`).join('')}</select>
+    </div>
+    <div class="form-group" id="bulkConceptGroup" style="display:none;">
+      <label>Concepto</label>
+      <input type="text" id="bulkNewConcept" placeholder="Ej: Vacaciones Italia">
+    </div>
+    <div class="form-group">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0;">
+        <input type="checkbox" id="bulkLearnRule" style="width:auto;">
+        <span style="font-size:0.85rem; color:var(--text);">Crear también una regla para futuros movs</span>
+      </label>
+      <input type="text" id="bulkRulePattern" placeholder="Patrón (ej. BOOKING)" style="margin-top:6px; display:none;">
+      <div id="bulkRuleHint" style="font-size:0.72rem; color:var(--text-faint); margin-top:4px; display:none;">Se aplicará cuando importes movs nuevos cuyo concepto contenga este texto.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-action="cancel">Cancelar</button>
+      <button class="btn btn-primary" data-action="save">Asignar ${movs.length} movs</button>
+    </div>
+  `);
+
+  const sel = document.getElementById('bulkAssignSel');
+  const conceptGroup = document.getElementById('bulkConceptGroup');
+  const conceptInput = document.getElementById('bulkNewConcept');
+  const learnChk = document.getElementById('bulkLearnRule');
+  const rulePatternInp = document.getElementById('bulkRulePattern');
+  const ruleHint = document.getElementById('bulkRuleHint');
+
+  function refreshConceptVis() {
+    const v = sel.value;
+    const show = (v === 'new_puntual_gasto' || v === 'new_puntual_ingreso' || v === 'new_fixed');
+    conceptGroup.style.display = show ? 'block' : 'none';
+  }
+  refreshConceptVis();
+  sel.onchange = refreshConceptVis;
+
+  learnChk.onchange = () => {
+    const show = learnChk.checked;
+    rulePatternInp.style.display = show ? 'block' : 'none';
+    ruleHint.style.display = show ? 'block' : 'none';
+    if (show && !rulePatternInp.value) {
+      const firstWords = movs[0].concept.trim().split(/\s+/).slice(0, 2).join(' ');
+      rulePatternInp.value = firstWords;
+    }
+  };
+
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
+  document.querySelector('[data-action="save"]').onclick = () => {
+    const v = sel.value;
+    const concept = conceptInput.value.trim();
+    let target = null;
+
+    if (v.startsWith('__')) { toast('Elige una opción válida', true); return; }
+    if (v === 'ignore') target = { type: 'ignore' };
+    else if (v === 'internal_transfer') target = { type: 'internal_transfer' };
+    else if (v === 'nomina_aner') target = { type: 'nomina_aner' };
+    else if (v === 'nomina_iratxe') target = { type: 'nomina_iratxe' };
+    else if (v.startsWith('fixed:')) target = { type: 'fixed', concept: v.substring(6) };
+    else if (v.startsWith('puntual_bag:')) target = { type: 'puntual_gasto', concept: v.substring('puntual_bag:'.length) };
+    else if (v.startsWith('ingreso_bag:')) target = { type: 'puntual_ingreso', concept: v.substring('ingreso_bag:'.length) };
+    else if (v === 'new_puntual_gasto') {
+      if (!concept) { toast('Escribe un concepto', true); return; }
+      target = { type: 'puntual_gasto', concept };
+    } else if (v === 'new_puntual_ingreso') {
+      if (!concept) { toast('Escribe un concepto', true); return; }
+      target = { type: 'puntual_ingreso', concept };
+    } else if (v === 'new_fixed') {
+      if (!concept) { toast('Escribe un concepto', true); return; }
+      target = { type: 'fixed', concept };
+    }
+    if (!target) return;
+
+    let applied = 0;
+    for (const m of movs) {
+      applyAssignment(m, target);
+      applied++;
+    }
+
+    if (learnChk.checked) {
+      const pattern = rulePatternInp.value.trim();
+      if (pattern) {
+        const newRule = { id: genId(), pattern, target: { ...target } };
+        const exists = state.rules.some(r =>
+          r.pattern.toUpperCase() === pattern.toUpperCase() &&
+          JSON.stringify(r.target) === JSON.stringify(target)
+        );
+        if (!exists) state.rules.push(newRule);
+      }
+    }
+
+    selectedMovIds.clear();
+    saveState();
+    closeModal();
+    updateBulkBar();
+    renderAll();
+    if (currentView === 'movimientos') renderMovements();
+    else if (currentView === 'cuadre') renderCuadre();
+    updateCuadreBadge();
+    toast(`✅ ${applied} movimientos asignados`);
+  };
 }
 
 updateCuadreBadge();
