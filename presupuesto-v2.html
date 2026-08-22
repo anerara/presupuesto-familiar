@@ -4155,13 +4155,57 @@ function showAssignModal(movId) {
         options.push({ value: 'fixed:' + concept, label: `📌 ${concept} (${fmt(meta.lastAmount)})` });
       });
     }
-    // Puntuales conocidos: ya NO se listan en el desplegable.
-    // El usuario los crea siempre como "Nuevo gasto puntual" para tener control total.
+    // Bolsas activas: puntuales con al menos 1 mov del banco enlazado (source='imported')
+    // Estos SÍ interesa mostrar porque son "bolsas" donde el usuario acumula gastos similares
+    const bolsasGasto = new Map();
+    MONTHS.forEach(mk => {
+      const m = state.months[mk];
+      if (!m) return;
+      (m.puntuales || []).forEach(p => {
+        if (p.source === 'imported' && Array.isArray(p.linkedMovIds) && p.linkedMovIds.length > 0) {
+          const cur = bolsasGasto.get(p.concept) || { count: 0, totalMovs: 0, lastAmount: p.amount };
+          cur.count++;
+          cur.totalMovs += p.linkedMovIds.length;
+          cur.lastAmount = p.amount;
+          bolsasGasto.set(p.concept, cur);
+        }
+      });
+    });
+    if (bolsasGasto.size > 0) {
+      options.push({ value: '__group_bolsas', label: '─── 🎒 Bolsas de puntuales ───', disabled: true });
+      [...bolsasGasto.entries()]
+        .sort((a, b) => b[1].totalMovs - a[1].totalMovs)
+        .forEach(([concept, meta]) => {
+          options.push({ value: 'puntual_bag:' + concept, label: `🎒 ${concept} (${meta.totalMovs} movs)` });
+        });
+    }
+
     options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_gasto', label: '➕ Nuevo gasto puntual…' });
     options.push({ value: 'new_fixed', label: '➕ Nuevo gasto fijo…' });
   } else {
-    // Ingresos puntuales: mismo criterio, no listar catálogo
+    // Bolsas de ingresos: puntuales de ingreso con mov enlazado
+    const bolsasIng = new Map();
+    MONTHS.forEach(mk => {
+      const m = state.months[mk];
+      if (!m) return;
+      (m.incomePuntuales || []).forEach(p => {
+        if (p.source === 'imported' && Array.isArray(p.linkedMovIds) && p.linkedMovIds.length > 0) {
+          const cur = bolsasIng.get(p.concept) || { count: 0, totalMovs: 0 };
+          cur.count++;
+          cur.totalMovs += p.linkedMovIds.length;
+          bolsasIng.set(p.concept, cur);
+        }
+      });
+    });
+    if (bolsasIng.size > 0) {
+      options.push({ value: '__group_bolsas_ing', label: '─── 🎒 Bolsas de ingresos ───', disabled: true });
+      [...bolsasIng.entries()]
+        .sort((a, b) => b[1].totalMovs - a[1].totalMovs)
+        .forEach(([concept, meta]) => {
+          options.push({ value: 'ingreso_bag:' + concept, label: `🎒 ${concept} (${meta.totalMovs} movs)` });
+        });
+    }
     options.push({ value: '__group_new', label: '─── ➕ Crear nuevo ───', disabled: true });
     options.push({ value: 'new_puntual_ingreso', label: '➕ Nuevo ingreso puntual…' });
   }
@@ -4173,8 +4217,8 @@ function showAssignModal(movId) {
     if (t.type === 'nomina_aner') currentVal = 'nomina_aner';
     else if (t.type === 'nomina_iratxe') currentVal = 'nomina_iratxe';
     else if (t.type === 'fixed') currentVal = 'fixed:' + t.concept;
-    else if (t.type === 'puntual_gasto') currentVal = 'puntual_existing:' + t.concept;
-    else if (t.type === 'puntual_ingreso') currentVal = 'ingreso_existing:' + t.concept;
+    else if (t.type === 'puntual_gasto') currentVal = 'puntual_bag:' + t.concept;
+    else if (t.type === 'puntual_ingreso') currentVal = 'ingreso_bag:' + t.concept;
   }
 
   openModal(`
@@ -4331,6 +4375,8 @@ function showAssignModal(movId) {
     else if (v.startsWith('fixed:')) target = { type: 'fixed', concept: v.substring(6) };
     else if (v.startsWith('puntual_existing:')) target = { type: 'puntual_gasto', concept: v.substring('puntual_existing:'.length) };
     else if (v.startsWith('ingreso_existing:')) target = { type: 'puntual_ingreso', concept: v.substring('ingreso_existing:'.length) };
+    else if (v.startsWith('puntual_bag:')) target = { type: 'puntual_gasto', concept: v.substring('puntual_bag:'.length) };
+    else if (v.startsWith('ingreso_bag:')) target = { type: 'puntual_ingreso', concept: v.substring('ingreso_bag:'.length) };
     else if (v === 'new_puntual_gasto') {
       if (!concept) { toast('Escribe un concepto', true); return; }
       target = { type: 'puntual_gasto', concept };
