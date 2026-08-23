@@ -2192,16 +2192,35 @@ function calcLibretaBalance(monthIdx) {
 // Balance real disponible: libreta menos gastos de tarjeta pendientes de cargar
 function calcRealAvailable(monthIdx) {
   const libreta = calcLibretaBalance(monthIdx);
-  // Compras con tarjeta del mes actual que aún no se han cargado
-  // = compras del mes − consolidaciones del mes (que ya salieron de la libreta)
-  // Pero es más limpio así: compras del mes actual (que se cargarán a mes siguiente)
-  const pendiente = calcCardSpendInMonth(monthIdx);
-  // OJO: pendiente incluye compras del mes en curso; las de meses anteriores ya se consolidaron
+  // Pendiente = compras con tarjeta del mes - traspasos anticipados hechos ese mes
+  // Los traspasos son pagos ya realizados que reducen la deuda de la tarjeta
+  const pendiente = calcPendingCardsInMonth(monthIdx);
   return libreta - pendiente;
 }
 
+// Suma de traspasos internos (pagos anticipados a tarjetas) HECHOS en un mes.
+// Estos traspasos son pagos anticipados que reducen la deuda pendiente de la tarjeta.
+function calcInternalTransfersInMonth(monthIdx) {
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+  if (!state.movements) return 0;
+  return state.movements.reduce((sum, m) => {
+    if (!m.isInternalTransfer) return sum;
+    // Solo los que salen de la cuenta corriente y van hacia una tarjeta (m.transferToCardId)
+    if (m.accountId !== 'cuenta') return sum;
+    if (!m.transferToCardId) return sum;
+    if (m.date < from || m.date > to) return sum;
+    return sum + Math.abs(m.amount);
+  }, 0);
+}
+
 function calcPendingCardsInMonth(monthIdx) {
-  return calcCardSpendInMonth(monthIdx);
+  // Compras del mes con tarjeta MENOS traspasos anticipados hacia tarjetas hechos ese mes
+  const compras = calcCardSpendInMonth(monthIdx);
+  const traspasosPagados = calcInternalTransfersInMonth(monthIdx);
+  return Math.max(0, compras - traspasosPagados);
 }
 
 // Presupuesto semanal comparado con gasto real de esa semana:
@@ -2258,11 +2277,18 @@ function renderTripleBalance() {
     return;
   }
   const libreta = calcLibretaBalance(currentMonthIdx);
-  const pending = calcPendingCardsInMonth(currentMonthIdx);
+  const compras = calcCardSpendInMonth(currentMonthIdx);
+  const traspasos = calcInternalTransfersInMonth(currentMonthIdx);
+  const pending = Math.max(0, compras - traspasos);
   const real = libreta - pending;
 
   const libretaCls = libreta >= 0 ? 'info' : 'negative';
   const realCls = real >= 0 ? 'positive' : 'negative';
+
+  // Si hubo traspasos, mostrar desglose
+  const pendingSub = traspasos > 0
+    ? `compras ${fmt(compras)} − pagos anticipados ${fmt(traspasos)}`
+    : 'compras con tarjeta del mes aún sin cargar';
 
   el.innerHTML = `
     <div class="tb-card libreta">
@@ -2273,7 +2299,7 @@ function renderTripleBalance() {
     <div class="tb-card pending">
       <div class="tb-label">🔴 Pendiente tarjetas</div>
       <div class="tb-value warn">-${fmt(pending).replace('€','€')}</div>
-      <div class="tb-sub">compras con tarjeta del mes aún sin cargar</div>
+      <div class="tb-sub">${pendingSub}</div>
     </div>
     <div class="tb-card real">
       <div class="tb-label">🟢 Real disponible</div>
