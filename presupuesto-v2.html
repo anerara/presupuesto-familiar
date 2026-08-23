@@ -2126,20 +2126,22 @@ function calcBalance(monthIdx) {
 
 /* ==== V2 · TRIPLE BALANCE (libreta / pendiente tarjetas / real disponible) ==== */
 
-// Suma de compras hechas con tarjeta A o B con fecha dentro de un rango.
-// Se excluyen los cargos consolidados TARJ.CRDTO (que están en la cuenta).
+// Suma NETA de movimientos con tarjeta en un rango (gastos - devoluciones).
+// - Gastos (negativos): suman al total
+// - Devoluciones/condonaciones (positivos que NO son abono interno): restan del total
+// Se excluyen consolidaciones TARJ.CRDTO y traspasos internos (ABONO EN TARJETA, PAGO RECIBO).
 function calcCardSpendInRange(dateFromISO, dateToISO, accountIds = null) {
   if (!state.movements) return 0;
   return state.movements.reduce((sum, m) => {
     if (m.ignored) return sum;
     if (m.isCardConsolidation) return sum;
-    if (m.isInternalTransfer) return sum; // los traspasos internos NO son gasto
-    if (m.amount >= 0) return sum; // solo gastos (negativos)
+    if (m.isInternalTransfer) return sum; // traspasos internos NO son gasto ni devolución
     const acc = state.accounts.find(a => a.id === m.accountId);
     if (!acc || acc.type !== 'card') return sum;
     if (accountIds && !accountIds.includes(m.accountId)) return sum;
     if (m.date < dateFromISO || m.date > dateToISO) return sum;
-    return sum + Math.abs(m.amount);
+    // amount negativo suma al gasto; amount positivo (devolución/condonación) resta
+    return sum + Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }, 0);
 }
 
@@ -4061,12 +4063,15 @@ function markCardConsolidations(movs) {
       }
     }
 
-    // 3) PAGO RECIBO en tarjeta: es la contrapartida del TARJ.CRDTO desde la cuenta.
-    // Cuando ves esto en una tarjeta, el dinero "entra" en la tarjeta pero salió de la cuenta
-    // (o vino de otro sitio). No es ingreso ni gasto real: es un movimiento interno.
+    // 3) PAGO RECIBO y ABONOS en tarjeta: es la contrapartida del TARJ.CRDTO desde la cuenta
+    // o del traspaso interno. Cuando ves esto en una tarjeta, el dinero "entra" en la tarjeta
+    // pero salió de la cuenta (o vino de otro sitio). No es ingreso ni gasto real.
     const accHere = state.accounts.find(a => a.id === m.accountId);
     if (accHere && accHere.type === 'card' && !m.isCardConsolidation && !m.isInternalTransfer) {
-      if (conceptUp.includes('PAGO RECIBO') || conceptUp.includes('ABONO TARJ')) {
+      const esAbonoInterno = conceptUp.includes('PAGO RECIBO')
+        || conceptUp.includes('ABONO TARJ')
+        || conceptUp.includes('ABONO EN TARJETA');
+      if (esAbonoInterno) {
         m.isInternalTransfer = true;
         m.assignedTo = { type: 'internal_transfer', monthKey: MONTHS[new Date(m.date + 'T00:00:00').getMonth()] };
         m.ignored = false;
