@@ -1651,7 +1651,8 @@
           <option value="assigned">Asignados</option>
           <option value="ignored">Ignorados</option>
         </select>
-        <button class="btn btn-sm" id="btnRedetect" style="margin-left:auto;" title="Vuelve a detectar consolidaciones y traspasos en los movimientos ya importados">🔄 Re-detectar cargos y traspasos</button>
+        <button class="btn btn-sm" id="btnAddManualMov" style="margin-left:auto;" title="Añadir un movimiento manualmente (útil para cargos duplicados que el hash detectó como iguales)">➕ Añadir mov manual</button>
+        <button class="btn btn-sm" id="btnRedetect" title="Vuelve a detectar consolidaciones y traspasos en los movimientos ya importados">🔄 Re-detectar cargos y traspasos</button>
         <button class="btn btn-sm" id="btnClearAssign">🔄 Resetear asignaciones</button>
         <button class="btn btn-sm" id="btnClearMovs">🗑️ Borrar todos</button>
       </div>
@@ -3643,6 +3644,67 @@ document.getElementById('btnClearMovs').onclick = () => {
   updateCuadreBadge();
   toast('Movimientos borrados');
 };
+
+document.getElementById('btnAddManualMov').onclick = () => showManualMovModal();
+
+function showManualMovModal() {
+  const opts = state.accounts.map(a => `<option value="${a.id}">${escapeHTML(a.name)}</option>`).join('');
+  const hoy = new Date().toISOString().substring(0, 10);
+  openModal(`
+    <h2>➕ Añadir movimiento manual</h2>
+    <p style="font-size:0.82rem; color:var(--text-dim); margin-bottom:12px;">
+      Útil para añadir un cargo que el banco duplicó y el detector de duplicados de la app ignoró.
+    </p>
+    <div class="form-group">
+      <label>Cuenta</label>
+      <select id="manualAcc">${opts}</select>
+    </div>
+    <div class="form-group">
+      <label>Fecha</label>
+      <input type="date" id="manualDate" value="${hoy}">
+    </div>
+    <div class="form-group">
+      <label>Concepto</label>
+      <input type="text" id="manualConcept" placeholder="Ej: RECIBO IMQ">
+    </div>
+    <div class="form-group">
+      <label>Importe (negativo para gastos, positivo para ingresos)</label>
+      <input type="text" id="manualAmount" placeholder="-205.10">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-action="cancel">Cancelar</button>
+      <button class="btn btn-primary" data-action="save">Añadir</button>
+    </div>
+  `);
+
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
+  document.querySelector('[data-action="save"]').onclick = () => {
+    const accId = document.getElementById('manualAcc').value;
+    const date = document.getElementById('manualDate').value;
+    const concept = document.getElementById('manualConcept').value.trim();
+    const amountStr = document.getElementById('manualAmount').value.trim().replace(',', '.');
+    const amount = parseFloat(amountStr);
+    if (!accId || !date || !concept || isNaN(amount)) {
+      toast('Rellena todos los campos', true);
+      return;
+    }
+    // Generar id único basado en timestamp para evitar cualquier colisión
+    const id = 'm_manual_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+    const mov = {
+      id, date, concept, amount, accountId: accId,
+      assignedTo: null, ignored: false, isCardConsolidation: false, manual: true
+    };
+    state.movements.push(mov);
+    // Re-detectar por si aplica (traspaso interno, consolidación...)
+    markCardConsolidations([mov]);
+    saveState();
+    closeModal();
+    renderAll();
+    renderMovements();
+    updateCuadreBadge();
+    toast('✅ Movimiento añadido');
+  };
+}
 
 document.getElementById('btnRedetect').onclick = () => {
   const antesCons = state.movements.filter(m => m.isCardConsolidation).length;
