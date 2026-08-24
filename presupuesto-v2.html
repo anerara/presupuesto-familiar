@@ -2052,7 +2052,12 @@ function calcSaldoAnterior(monthIdx) {
   if (mo.saldoAnterior !== null && mo.saldoAnterior !== undefined) {
     return mo.saldoAnterior;
   }
-  // Calcular automáticamente desde mes anterior
+  // Si hay movimientos importados, usar el saldo libreta REAL al cierre del mes anterior
+  // (así viene lo que realmente hay en la cuenta, no el presupuesto teórico)
+  if (hasImportedMovements()) {
+    return calcLibretaBalance(monthIdx - 1);
+  }
+  // Sin movs importados: calcular por balance teórico del mes anterior
   return calcBalance(monthIdx - 1);
 }
 
