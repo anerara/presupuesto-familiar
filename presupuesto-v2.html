@@ -2218,11 +2218,42 @@ function calcInternalTransfersInMonth(monthIdx) {
   }, 0);
 }
 
+// Suma de cargos TARJ.CRDTO cargados en un mes específico (para calcular pendiente).
+// Estos son los cobros consolidados que Kutxabank hace normalmente el día 1 del mes.
+function calcCardConsolidationsInMonth(monthIdx) {
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+  if (!state.movements) return 0;
+  return state.movements.reduce((sum, m) => {
+    if (!m.isCardConsolidation) return sum;
+    if (m.date < from || m.date > to) return sum;
+    return sum + Math.abs(m.amount);
+  }, 0);
+}
+
 function calcPendingCardsInMonth(monthIdx) {
-  // Compras del mes con tarjeta MENOS traspasos anticipados hacia tarjetas hechos ese mes
+  // Lógica HÍBRIDA:
+  // 1) Si ya existe el TARJ.CRDTO del MES SIGUIENTE → usar ese número (cuadra exacto con el banco)
+  //    Los cargos consolidados son sagrados: cuadran por sí solos independientemente de qué
+  //    fechas de operación tengan las compras que agrupan.
+  // 2) Si NO existe (mes en curso) → estimación por compras del mes menos traspasos anticipados
+  if (monthIdx >= 11) {
+    // Diciembre: no hay mes siguiente en el año, usar estimación
+    const compras = calcCardSpendInMonth(monthIdx);
+    const traspasos = calcInternalTransfersInMonth(monthIdx);
+    return Math.max(0, compras - traspasos);
+  }
+  const cargosProxMes = calcCardConsolidationsInMonth(monthIdx + 1);
+  if (cargosProxMes > 0) {
+    // Mes cerrado: usar el cargo real del banco
+    return cargosProxMes;
+  }
+  // Mes en curso o sin datos: estimación
   const compras = calcCardSpendInMonth(monthIdx);
-  const traspasosPagados = calcInternalTransfersInMonth(monthIdx);
-  return Math.max(0, compras - traspasosPagados);
+  const traspasos = calcInternalTransfersInMonth(monthIdx);
+  return Math.max(0, compras - traspasos);
 }
 
 // Presupuesto semanal comparado con gasto real de esa semana:
@@ -2279,18 +2310,27 @@ function renderTripleBalance() {
     return;
   }
   const libreta = calcLibretaBalance(currentMonthIdx);
-  const compras = calcCardSpendInMonth(currentMonthIdx);
-  const traspasos = calcInternalTransfersInMonth(currentMonthIdx);
-  const pending = Math.max(0, compras - traspasos);
+  const pending = calcPendingCardsInMonth(currentMonthIdx);
   const real = libreta - pending;
 
   const libretaCls = libreta >= 0 ? 'info' : 'negative';
   const realCls = real >= 0 ? 'positive' : 'negative';
 
-  // Si hubo traspasos, mostrar desglose
-  const pendingSub = traspasos > 0
-    ? `compras ${fmt(compras)} − pagos anticipados ${fmt(traspasos)}`
-    : 'compras con tarjeta del mes aún sin cargar';
+  // Determinar en qué modo estamos y mostrar el subtítulo adecuado
+  const cargosProxMes = currentMonthIdx < 11 ? calcCardConsolidationsInMonth(currentMonthIdx + 1) : 0;
+  const modoCargoReal = cargosProxMes > 0;
+
+  let pendingSub;
+  if (modoCargoReal) {
+    const nextMonthName = MONTHS[currentMonthIdx + 1];
+    pendingSub = `cargos TARJ.CRDTO del 1 de ${nextMonthName} (exacto)`;
+  } else {
+    const compras = calcCardSpendInMonth(currentMonthIdx);
+    const traspasos = calcInternalTransfersInMonth(currentMonthIdx);
+    pendingSub = traspasos > 0
+      ? `estimación: compras ${fmt(compras)} − pagos anticipados ${fmt(traspasos)}`
+      : 'estimación: compras con tarjeta del mes';
+  }
 
   el.innerHTML = `
     <div class="tb-card libreta">
