@@ -2606,7 +2606,14 @@ function editNomina(key, field) {
     el.textContent = original;
   };
 
-  input.onblur = () => finish(true);
+  input.onblur = (ev) => {
+    const related = ev.relatedTarget;
+    if (related && row && row.contains(related) && related.dataset.action === 'delete') {
+      el.textContent = original;
+      return;
+    }
+    finish(true);
+  };
   input.onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.onblur = null; finish(false); }
@@ -2685,7 +2692,14 @@ function editIncomePuntual(id, field) {
     el.textContent = original;
   };
 
-  input.onblur = () => finish(true);
+  input.onblur = (ev) => {
+    const related = ev.relatedTarget;
+    if (related && row && row.contains(related) && related.dataset.action === 'delete') {
+      el.textContent = original;
+      return;
+    }
+    finish(true);
+  };
   input.onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.onblur = null; finish(false); }
@@ -2853,7 +2867,16 @@ function editFixed(id, field) {
     el.textContent = original;
   };
 
-  input.onblur = () => finish(true);
+  // Si el blur fue causado por click en el botón de eliminar de la misma fila,
+  // no guardamos: dejamos que el eliminar haga su trabajo sin el renderAll intermedio.
+  input.onblur = (ev) => {
+    const related = ev.relatedTarget;
+    if (related && row.contains(related) && related.dataset.action === 'delete') {
+      el.textContent = original; // restaurar texto para que el click en X se resuelva bien
+      return;
+    }
+    finish(true);
+  };
   input.onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.onblur = null; finish(false); }
@@ -2972,7 +2995,14 @@ function editPuntual(id, field) {
     el.textContent = original;
   };
 
-  input.onblur = () => finish(true);
+  input.onblur = (ev) => {
+    const related = ev.relatedTarget;
+    if (related && row && row.contains(related) && related.dataset.action === 'delete') {
+      el.textContent = original;
+      return;
+    }
+    finish(true);
+  };
   input.onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.onblur = null; finish(false); }
@@ -3314,7 +3344,14 @@ function editWeekExpense(wid, eid, field) {
     el.textContent = original;
   };
 
-  input.onblur = () => finish(true);
+  input.onblur = (ev) => {
+    const related = ev.relatedTarget;
+    if (related && row && row.contains(related) && related.dataset.action === 'delete') {
+      el.textContent = original;
+      return;
+    }
+    finish(true);
+  };
   input.onkeydown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { input.onblur = null; finish(false); }
