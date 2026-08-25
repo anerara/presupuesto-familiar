@@ -2225,11 +2225,20 @@ function calcMonthEndBalance(monthIdx) {
     return state.months.enero.saldoAnterior || 0;
   }
   const mo = state.months[MONTHS[monthIdx]];
-  // Mes cerrado manualmente: usar el valor congelado
+  // 1) Mes cerrado manualmente: usar el valor congelado
   if (mo.closed && mo.closedBalance !== undefined && mo.closedBalance !== null) {
     return mo.closedBalance;
   }
 
+  // 2) Mes "cerrado de facto" (ya existe TARJ.CRDTO del mes siguiente en la cuenta):
+  //    usar el Real disponible dinámico = libreta - pendiente tarjetas
+  //    Este número cuadra exacto con lo que muestra Kutxabank.
+  const cargosProxMes = monthIdx < 11 ? calcCardConsolidationsInMonth(monthIdx + 1) : 0;
+  if (cargosProxMes > 0 && hasImportedMovements()) {
+    return calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
+  }
+
+  // 3) Mes en curso o futuro sin datos bancarios definitivos: arrastre + previsión + real conocido
   // === MODELO: gastos de tarjeta se cuentan por compra individual ===
   // Los TARJ.CRDTO NO cuentan en el balance (son solo consolidaciones informativas)
   // Solo cuentan las compras individuales de tarjeta (asignadas o sin asignar)
@@ -2238,7 +2247,6 @@ function calcMonthEndBalance(monthIdx) {
   //         + ingresos previstos (nóminas + puntuales)
   //         - gastos previstos (fijos + puntuales + weeks) — incluyen items enlazados con banco
   //         + movs sin asignar (netos) — cuenta corriente sin TARJ.CRDTO
-  //         - compras tarjeta sin asignar — que no están en ítems
 
   const arranque = calcMonthEndBalance(monthIdx - 1);
   const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
@@ -2247,8 +2255,6 @@ function calcMonthEndBalance(monthIdx) {
   const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
 
   // Movs importados sin asignar del mes:
-  // - Cuenta corriente: positivos suman, negativos restan (excepto TARJ.CRDTO y traspasos)
-  // - Tarjetas: solo compras sin asignar (los ingresos/devoluciones sin asignar también cuentan)
   const mm = String(monthIdx + 1).padStart(2, '0');
   const from = `2026-${mm}-01`;
   const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
