@@ -1390,6 +1390,41 @@
   }
   .triple-balance:empty { display: none; }
 
+  /* ========= VERIFICACIÓN TARJETAS (v2) ========= */
+  .cv-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 16px;
+  }
+  .cv-title {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .cv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    flex-wrap: wrap;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .cv-row:first-of-type { border-top: none; }
+  .cv-nums {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .cv-nums strong { color: var(--text); }
+
   .tb-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1575,6 +1610,9 @@
 
   <!-- PANEL TRIPLE BALANCE (v2) -->
   <div class="triple-balance" id="tripleBalance"></div>
+
+  <!-- PANEL VERIFICACIÓN TARJETAS (v2) -->
+  <div id="cardVerification"></div>
 
   <!-- RESUMEN -->
   <div class="summary" id="summarySection"></div>
@@ -2192,19 +2230,25 @@ function calcMonthEndBalance(monthIdx) {
     return mo.closedBalance;
   }
 
-  // Mes abierto: arrastre + ingresos previstos - gastos previstos + movs sin asignar
-  // - Los ítems (fijos, puntuales, nóminas) usan importe real si están enlazados 🔗 con banco
-  //   o importe previsto si no. Ya recogen los movs que has asignado.
-  // - Los movs importados sin asignar (que no son consolidaciones ni traspasos) también cuentan,
-  //   así todo lo real del banco influye en el balance aunque aún no lo hayas categorizado.
+  // === MODELO: gastos de tarjeta se cuentan por compra individual ===
+  // Los TARJ.CRDTO NO cuentan en el balance (son solo consolidaciones informativas)
+  // Solo cuentan las compras individuales de tarjeta (asignadas o sin asignar)
+  //
+  // Balance = arranque
+  //         + ingresos previstos (nóminas + puntuales)
+  //         - gastos previstos (fijos + puntuales + weeks) — incluyen items enlazados con banco
+  //         + movs sin asignar (netos) — cuenta corriente sin TARJ.CRDTO
+  //         - compras tarjeta sin asignar — que no están en ítems
+
   const arranque = calcMonthEndBalance(monthIdx - 1);
   const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
   const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
   const ingresosMes = nominas + ingPuntuales;
   const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
 
-  // Sumar movs sin asignar del mes (cuenta corriente): los positivos suman, los negativos restan
-  // Excluir consolidaciones y traspasos internos (no son gasto/ingreso real)
+  // Movs importados sin asignar del mes:
+  // - Cuenta corriente: positivos suman, negativos restan (excepto TARJ.CRDTO y traspasos)
+  // - Tarjetas: solo compras sin asignar (los ingresos/devoluciones sin asignar también cuentan)
   const mm = String(monthIdx + 1).padStart(2, '0');
   const from = `2026-${mm}-01`;
   const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
@@ -2212,29 +2256,50 @@ function calcMonthEndBalance(monthIdx) {
   let unassignedNet = 0;
   if (state.movements) {
     for (const m of state.movements) {
-      if (m.accountId !== 'cuenta') continue; // solo cuenta corriente (las tarjetas van vía TARJ.CRDTO)
       if (m.date < from || m.date > to) continue;
       if (m.assignedTo) continue; // ya cuenta vía item enlazado
       if (m.ignored) continue;
-      if (m.isCardConsolidation) continue; // TARJ.CRDTO cuenta como salida de libreta pero no como gasto propio
-      if (m.isInternalTransfer) continue; // traspasos no son gasto
+      if (m.isCardConsolidation) continue; // TARJ.CRDTO no cuenta como gasto
+      if (m.isInternalTransfer) continue; // traspasos internos no cuentan
       unassignedNet += m.amount;
     }
   }
-  // Restar también las consolidaciones TARJ.CRDTO del mes: SÍ salen de la libreta
-  // (ya se han cargado del saldo real)
-  let consolidacionesRestar = 0;
-  if (state.movements) {
-    for (const m of state.movements) {
-      if (!m.isCardConsolidation) continue;
-      if (m.date < from || m.date > to) continue;
-      consolidacionesRestar += Math.abs(m.amount);
-    }
-  }
-  // Restar los traspasos internos (pagos anticipados a tarjeta): también salen de la libreta
-  const traspasos = calcInternalTransfersInMonth(monthIdx);
 
-  return arranque + ingresosMes - gastosPresupuesto + unassignedNet - consolidacionesRestar - traspasos;
+  return arranque + ingresosMes - gastosPresupuesto + unassignedNet;
+}
+
+// Verificación por tarjeta: compara compras del mes en la tarjeta vs TARJ.CRDTO del mes siguiente
+function checkCardVerification(cardId, monthIdx) {
+  if (!state.movements || monthIdx >= 11) return null;
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+  // Compras (netas: gastos - devoluciones) del mes en esa tarjeta
+  let compras = 0;
+  for (const m of state.movements) {
+    if (m.accountId !== cardId) continue;
+    if (m.isCardConsolidation) continue;
+    if (m.isInternalTransfer) continue;
+    if (m.ignored) continue;
+    if (m.date < from || m.date > to) continue;
+    compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
+  }
+  // TARJ.CRDTO del mes siguiente para esa tarjeta
+  const nextMm = String(monthIdx + 2).padStart(2, '0');
+  const nextFrom = `2026-${nextMm}-01`;
+  const nextDays = new Date(2026, monthIdx + 2, 0).getDate();
+  const nextTo = `2026-${nextMm}-${String(nextDays).padStart(2, '0')}`;
+  let consolidado = 0;
+  for (const m of state.movements) {
+    if (!m.isCardConsolidation) continue;
+    if (m.cardId !== cardId) continue;
+    if (m.date < nextFrom || m.date > nextTo) continue;
+    consolidado += Math.abs(m.amount);
+  }
+  const diff = compras - consolidado;
+  const cuadrado = Math.abs(diff) < 0.01;
+  return { compras, consolidado, diff, cuadrado, hasData: compras > 0 || consolidado > 0 };
 }
 
 // Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
@@ -2416,6 +2481,7 @@ function renderAll() {
   renderMonthNav();
   renderNotesValue();
   renderTripleBalance();
+  renderCardVerification();
   renderSummary();
   renderNominas();
   renderIncomePuntuales();
@@ -2470,6 +2536,43 @@ function renderTripleBalance() {
       <div class="tb-label">🟢 Real disponible</div>
       <div class="tb-value ${realCls}">${fmt(real)}</div>
       <div class="tb-sub">libreta − pendiente tarjetas</div>
+    </div>
+  `;
+}
+
+// Panel de verificación de tarjetas: compara compras del mes vs TARJ.CRDTO del mes siguiente
+function renderCardVerification() {
+  const el = document.getElementById('cardVerification');
+  if (!el) return;
+  const cards = state.accounts.filter(a => a.type === 'card');
+  if (!hasImportedMovements() || cards.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  const rows = cards.map(card => {
+    const chk = checkCardVerification(card.id, currentMonthIdx);
+    if (!chk || !chk.hasData) return '';
+    const icon = chk.cuadrado ? '<span style="color:var(--income);">✓</span>' : '<span style="color:var(--warning);">⚠️</span>';
+    const badgeColor = chk.cuadrado ? 'var(--income)' : 'var(--warning)';
+    const diffText = chk.cuadrado
+      ? 'cuadrado'
+      : `diferencia: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
+    return `
+      <div class="cv-row">
+        <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
+        <div class="cv-nums">
+          <span title="Suma neta de compras de esta tarjeta con fecha en el mes actual">Compras: <strong>${fmt(chk.compras)}</strong></span>
+          <span title="Cargo TARJ.CRDTO del mes siguiente para esta tarjeta">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
+          <span style="color:${badgeColor};">${diffText}</span>
+        </div>
+      </div>
+    `;
+  }).filter(Boolean).join('');
+  if (!rows) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="cv-panel">
+      <div class="cv-title">🔍 Verificación tarjetas — ${MONTHS[currentMonthIdx]}</div>
+      ${rows}
     </div>
   `;
 }
