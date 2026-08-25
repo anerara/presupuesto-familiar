@@ -2277,13 +2277,13 @@ function calcMonthEndBalance(monthIdx) {
 // Verificación por tarjeta: compara compras del mes en la tarjeta vs TARJ.CRDTO del mes siguiente
 function checkCardVerification(cardId, monthIdx) {
   if (!state.movements || monthIdx >= 11) return null;
+  const card = state.accounts.find(a => a.id === cardId);
   const mm = String(monthIdx + 1).padStart(2, '0');
   const from = `2026-${mm}-01`;
   const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
   const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
   // Compras (netas: gastos - devoluciones) del mes en esa tarjeta.
   // Incluye TODOS los movs con fecha en el mes, independientemente de cuándo se importaron.
-  // Cuando importes el extracto del mes siguiente, se añadirán los arrastres a este mes.
   let compras = 0;
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
@@ -2293,6 +2293,10 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
+  // Handicap 2025: solo se aplica en enero (mes 0). Es deuda arrastrada del año anterior
+  // que Kutxabank cobrará dentro del TARJ.CRDTO del 01/02.
+  const handicap = (monthIdx === 0 && card?.handicap2025) ? Math.abs(card.handicap2025) : 0;
+  const comprasConHandicap = compras + handicap;
   // Traspasos internos DEL MES hacia esta tarjeta (pagos anticipados)
   let traspasos = 0;
   for (const m of state.movements) {
@@ -2313,12 +2317,13 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < nextFrom || m.date > nextTo) continue;
     consolidado += Math.abs(m.amount);
   }
-  // Total pagado = traspasos anticipados + TARJ.CRDTO consolidado del mes siguiente
   const totalPagado = traspasos + consolidado;
-  const diff = compras - totalPagado;
-  // Tolerancia de 1€ para evitar falsos negativos por céntimos
+  const diff = comprasConHandicap - totalPagado;
   const cuadrado = Math.abs(diff) < 1;
-  return { compras, traspasos, consolidado, totalPagado, diff, cuadrado, hasData: compras > 0 || totalPagado > 0 };
+  return {
+    compras, handicap, comprasConHandicap, traspasos, consolidado, totalPagado, diff, cuadrado,
+    hasData: comprasConHandicap > 0 || totalPagado > 0
+  };
 }
 
 // Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
@@ -2584,6 +2589,7 @@ function renderCardVerification() {
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
           <span title="Suma neta de compras de esta tarjeta con fecha en el mes actual">Compras: <strong>${fmt(chk.compras)}</strong></span>
+          ${chk.handicap > 0 ? `<span title="Deuda arrastrada de 2025 que Kutxabank cobra en el TARJ.CRDTO del 01/02" style="color:var(--info);">Handicap 2025: <strong>+${fmt(chk.handicap)}</strong></span>` : ''}
           ${traspasosLabel}
           <span title="Cargo TARJ.CRDTO del mes siguiente para esta tarjeta">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
           <span style="color:${badgeColor};">${diffText}</span>
@@ -5177,28 +5183,37 @@ function showAccountModal(id = null) {
       <input type="text" id="accCharge" value="${escapeHTML(acc?.chargeConcept || '')}" placeholder="Ej: TARJ.CRDTO 4921074068731903">
       <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Cuando aparezca este texto en un movimiento de la cuenta, la app lo marcará como "consolidación" para no duplicar.</div>
     </div>
+    <div class="form-group" id="handicapGroup" style="${acc?.type === 'card' ? '' : 'display:none;'}">
+      <label>Handicap arrastrado de 2025 (€)</label>
+      <input type="number" step="0.01" id="accHandicap" value="${acc?.handicap2025 ?? 0}" placeholder="0">
+      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Suma de compras hechas en 2025 con esta tarjeta pero que se cobraron en 2026. Se añadirá a las 'Compras' de enero para que cuadre con el TARJ.CRDTO real. Deja 0 si no aplica.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
       <button class="btn btn-primary" data-action="save">Guardar</button>
     </div>
   `);
   document.getElementById('accType').onchange = (e) => {
-    document.getElementById('chargeGroup').style.display = e.target.value === 'card' ? 'block' : 'none';
+    const isCard = e.target.value === 'card';
+    document.getElementById('chargeGroup').style.display = isCard ? 'block' : 'none';
+    document.getElementById('handicapGroup').style.display = isCard ? 'block' : 'none';
   };
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="save"]').onclick = () => {
     const name = document.getElementById('accName').value.trim();
     const type = document.getElementById('accType').value;
     const charge = document.getElementById('accCharge').value.trim();
+    const handicap = type === 'card' ? (parseFloat(document.getElementById('accHandicap').value) || 0) : 0;
     if (!name) { toast('Nombre requerido', true); return; }
     if (isNew) {
-      state.accounts.push({ id: genId(), name, type, chargeConcept: charge });
+      state.accounts.push({ id: genId(), name, type, chargeConcept: charge, handicap2025: handicap });
     } else {
-      Object.assign(acc, { name, type, chargeConcept: charge });
+      Object.assign(acc, { name, type, chargeConcept: charge, handicap2025: handicap });
     }
     saveState();
     closeModal();
     renderRules();
+    renderAll();
     toast('Guardado');
   };
 }
