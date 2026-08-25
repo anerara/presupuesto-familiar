@@ -2285,6 +2285,14 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
+  // Traspasos internos DEL MES hacia esta tarjeta (pagos anticipados)
+  let traspasos = 0;
+  for (const m of state.movements) {
+    if (!m.isInternalTransfer) continue;
+    if (m.transferToCardId !== cardId) continue;
+    if (m.date < from || m.date > to) continue;
+    traspasos += Math.abs(m.amount);
+  }
   // TARJ.CRDTO del mes siguiente para esa tarjeta
   const nextMm = String(monthIdx + 2).padStart(2, '0');
   const nextFrom = `2026-${nextMm}-01`;
@@ -2297,9 +2305,11 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < nextFrom || m.date > nextTo) continue;
     consolidado += Math.abs(m.amount);
   }
-  const diff = compras - consolidado;
+  // Total pagado = traspasos anticipados + TARJ.CRDTO consolidado
+  const totalPagado = traspasos + consolidado;
+  const diff = compras - totalPagado;
   const cuadrado = Math.abs(diff) < 0.01;
-  return { compras, consolidado, diff, cuadrado, hasData: compras > 0 || consolidado > 0 };
+  return { compras, traspasos, consolidado, totalPagado, diff, cuadrado, hasData: compras > 0 || totalPagado > 0 };
 }
 
 // Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
@@ -2557,11 +2567,15 @@ function renderCardVerification() {
     const diffText = chk.cuadrado
       ? 'cuadrado'
       : `diferencia: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
+    const traspasosLabel = chk.traspasos > 0
+      ? `<span title="Traspasos anticipados hacia esta tarjeta en el mes">Pagos anticipados: <strong>${fmt(chk.traspasos)}</strong></span>`
+      : '';
     return `
       <div class="cv-row">
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
           <span title="Suma neta de compras de esta tarjeta con fecha en el mes actual">Compras: <strong>${fmt(chk.compras)}</strong></span>
+          ${traspasosLabel}
           <span title="Cargo TARJ.CRDTO del mes siguiente para esta tarjeta">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
           <span style="color:${badgeColor};">${diffText}</span>
         </div>
