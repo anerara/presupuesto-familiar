@@ -142,6 +142,21 @@
     border-color: var(--accent);
     background: rgba(94,234,212,0.08);
   }
+  .annual-cell.closed {
+    background: rgba(88, 166, 255, 0.06);
+    border-color: rgba(88, 166, 255, 0.3);
+  }
+  .lock-mark {
+    cursor: pointer;
+    font-size: 0.7rem;
+    margin-left: 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.15s;
+  }
+  .lock-mark:hover { background: var(--bg-input); }
+  .lock-mark-open { opacity: 0.35; }
+  .lock-mark-open:hover { opacity: 1; }
 
   .annual-cell-month {
     font-size: 0.7rem;
@@ -2127,39 +2142,74 @@ function calcBalance(monthIdx) {
   return calcIncome(monthIdx) - calcExpenses(monthIdx);
 }
 
+/* ==== V2 · CIERRE MANUAL DE MES ==== */
+
+function toggleMonthClose(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  const nombre = MONTHS[monthIdx];
+  if (mo.closed) {
+    // Reabrir
+    if (!confirm(`¿Reabrir ${nombre}? El balance volverá a recalcularse dinámicamente con los ingresos, gastos y movimientos actuales.`)) return;
+    mo.closed = false;
+    delete mo.closedBalance;
+    delete mo.closedAt;
+    saveState();
+    renderAll();
+    toast(`🔓 ${nombre} reabierto`);
+  } else {
+    // Cerrar: congelar el balance actual
+    const balanceActual = calcMonthCloseValue(monthIdx);
+    const msg = `¿Cerrar ${nombre}?\n\n` +
+      `El balance se congelará en ${fmt(balanceActual)}.\n` +
+      `A partir de ahora, añadir o quitar movimientos, gastos o ingresos NO cambiará el balance de ${nombre}.\n\n` +
+      `Podrás reabrirlo cuando quieras.`;
+    if (!confirm(msg)) return;
+    mo.closed = true;
+    mo.closedBalance = balanceActual;
+    mo.closedAt = new Date().toISOString();
+    saveState();
+    renderAll();
+    toast(`🔒 ${nombre} cerrado con balance ${fmt(balanceActual)}`);
+  }
+}
+
 // Balance a FIN de mes, con arrastre acumulado desde enero.
-// - Meses cerrados (con TARJ.CRDTO del mes siguiente ya cargado): usa Real disponible
-// - Mes en curso o sin cargo del mes siguiente: usa arranque + previsión de este mes
-// - Meses futuros: arrastre del mes anterior + previsión de este mes
-// Esta es la cifra que aparece en el balance anual superior. Los checks ✓ NO afectan.
+// - Meses CERRADOS manualmente: usa el número congelado en closedBalance
+// - Meses ABIERTOS: arrastre + previsión (recalcula dinámicamente)
+// Un mes se cierra/abre con el botón 🔒. Los checks ✓ NO afectan.
 function calcMonthEndBalance(monthIdx) {
   if (monthIdx < 0) {
     // Antes de enero: saldo inicial (diciembre 2025)
     return state.months.enero.saldoAnterior || 0;
   }
-  // Comprobar si el mes está "cerrado" (tiene TARJ.CRDTO del mes siguiente)
-  const cargosProxMes = monthIdx < 11 ? calcCardConsolidationsInMonth(monthIdx + 1) : 0;
-  const cerrado = cargosProxMes > 0;
-
-  if (cerrado && hasImportedMovements()) {
-    // Mes cerrado: usar Real disponible = libreta a fin de mes - pendiente tarjetas
-    return calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
+  const mo = state.months[MONTHS[monthIdx]];
+  // Mes cerrado manualmente: usar el valor congelado
+  if (mo.closed && mo.closedBalance !== undefined && mo.closedBalance !== null) {
+    return mo.closedBalance;
   }
 
-  // Mes en curso o futuro: arrastre + previsión
-  // Arranque = balance del mes anterior (recursivo, en cascada)
+  // Mes abierto: arrastre + ingresos - gastos previstos
   const arranque = calcMonthEndBalance(monthIdx - 1);
-
-  // Ingresos del mes (nóminas + puntuales) — NO incluir "saldo anterior" porque ya lo usamos como arranque
-  const mo = state.months[MONTHS[monthIdx]];
   const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
   const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
   const ingresosMes = nominas + ingPuntuales;
-
-  // Gastos del mes: fijos + puntuales + weeks (presupuesto semanal)
   const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
-
   return arranque + ingresosMes - gastosPresupuesto;
+}
+
+// Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
+function calcMonthCloseValue(monthIdx) {
+  if (hasImportedMovements()) {
+    // Si hay movs, usar real disponible = libreta - pendiente
+    return calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
+  }
+  // Sin movs: usar la previsión
+  const arranque = calcMonthEndBalance(monthIdx - 1);
+  const mo = state.months[MONTHS[monthIdx]];
+  const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
+  const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
+  const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
+  return arranque + nominas + ingPuntuales - gastosPresupuesto;
 }
 
 /* ==== V2 · TRIPLE BALANCE (libreta / pendiente tarjetas / real disponible) ==== */
@@ -2408,17 +2458,23 @@ function renderAnnualSummary() {
     // else pasado sin indicador
 
     const cell = document.createElement('div');
-    cell.className = 'annual-cell' + (i === currentMonthIdx ? ' current' : '');
+    cell.className = 'annual-cell' + (i === currentMonthIdx ? ' current' : '') + (state.months[MONTHS[i]].closed ? ' closed' : '');
+    const lockIcon = state.months[MONTHS[i]].closed ? '🔒' : '';
     cell.innerHTML = `
-      <div class="annual-cell-month">${MONTHS_SHORT[i]}</div>
+      <div class="annual-cell-month">${MONTHS_SHORT[i]} ${lockIcon ? `<span class="lock-mark" data-toggle-lock="${i}" title="Mes cerrado — click para reabrir">${lockIcon}</span>` : `<span class="lock-mark lock-mark-open" data-toggle-lock="${i}" title="Click para cerrar mes">🔓</span>`}</div>
       <div class="annual-cell-value ${cls} ${sizeCls}">${formatted}</div>
       ${indicator ? `<div class="annual-cell-indicator">${indicator}</div>` : ''}
     `;
-    cell.onclick = () => {
+    cell.onclick = (ev) => {
+      // Si se pulsó el candado, no navegar
+      if (ev.target.dataset.toggleLock !== undefined) {
+        ev.stopPropagation();
+        toggleMonthClose(parseInt(ev.target.dataset.toggleLock));
+        return;
+      }
       currentMonthIdx = i;
       saveCache();
       renderAll();
-      // Scrollear al resumen del mes para orientar al usuario
       const summary = document.getElementById('summarySection');
       if (summary) summary.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
@@ -2522,6 +2578,11 @@ function renderSummary() {
     <div class="balance-box ${balance >= 0 ? 'positive' : 'negative'}">
       <div class="balance-label">Balance del mes</div>
       <div class="balance-amount ${balance >= 0 ? 'positive' : 'negative'}">${fmt(balance)}</div>
+      <div style="margin-top:10px; text-align:center;">
+        ${state.months[MONTHS[currentMonthIdx]].closed
+          ? `<button class="btn btn-sm" id="btnToggleClose" title="Reabrir para que el balance vuelva a recalcularse">🔓 Reabrir mes (actualmente cerrado en ${fmt(state.months[MONTHS[currentMonthIdx]].closedBalance)})</button>`
+          : `<button class="btn btn-sm" id="btnToggleClose" title="Congelar el balance actual — no cambiará aunque toques cosas">🔒 Cerrar mes</button>`}
+      </div>
     </div>
   `;
 
@@ -2530,6 +2591,8 @@ function renderSummary() {
   document.getElementById('saldoAnteriorAmount').onclick = editSaldoAnterior;
   const resetBtn = document.getElementById('resetSaldoBtn');
   if (resetBtn) resetBtn.onclick = resetSaldoAnterior;
+  const closeBtn = document.getElementById('btnToggleClose');
+  if (closeBtn) closeBtn.onclick = () => toggleMonthClose(currentMonthIdx);
 }
 
 function editSaldoAnterior() {
