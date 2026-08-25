@@ -86,6 +86,10 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
+    position: sticky;
+    top: 8px;
+    z-index: 50;
+    backdrop-filter: blur(6px);
   }
 
   .annual-summary::-webkit-scrollbar { height: 6px; }
@@ -2188,13 +2192,49 @@ function calcMonthEndBalance(monthIdx) {
     return mo.closedBalance;
   }
 
-  // Mes abierto: arrastre + ingresos - gastos previstos
+  // Mes abierto: arrastre + ingresos previstos - gastos previstos + movs sin asignar
+  // - Los ítems (fijos, puntuales, nóminas) usan importe real si están enlazados 🔗 con banco
+  //   o importe previsto si no. Ya recogen los movs que has asignado.
+  // - Los movs importados sin asignar (que no son consolidaciones ni traspasos) también cuentan,
+  //   así todo lo real del banco influye en el balance aunque aún no lo hayas categorizado.
   const arranque = calcMonthEndBalance(monthIdx - 1);
   const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
   const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
   const ingresosMes = nominas + ingPuntuales;
   const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
-  return arranque + ingresosMes - gastosPresupuesto;
+
+  // Sumar movs sin asignar del mes (cuenta corriente): los positivos suman, los negativos restan
+  // Excluir consolidaciones y traspasos internos (no son gasto/ingreso real)
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+  let unassignedNet = 0;
+  if (state.movements) {
+    for (const m of state.movements) {
+      if (m.accountId !== 'cuenta') continue; // solo cuenta corriente (las tarjetas van vía TARJ.CRDTO)
+      if (m.date < from || m.date > to) continue;
+      if (m.assignedTo) continue; // ya cuenta vía item enlazado
+      if (m.ignored) continue;
+      if (m.isCardConsolidation) continue; // TARJ.CRDTO cuenta como salida de libreta pero no como gasto propio
+      if (m.isInternalTransfer) continue; // traspasos no son gasto
+      unassignedNet += m.amount;
+    }
+  }
+  // Restar también las consolidaciones TARJ.CRDTO del mes: SÍ salen de la libreta
+  // (ya se han cargado del saldo real)
+  let consolidacionesRestar = 0;
+  if (state.movements) {
+    for (const m of state.movements) {
+      if (!m.isCardConsolidation) continue;
+      if (m.date < from || m.date > to) continue;
+      consolidacionesRestar += Math.abs(m.amount);
+    }
+  }
+  // Restar los traspasos internos (pagos anticipados a tarjeta): también salen de la libreta
+  const traspasos = calcInternalTransfersInMonth(monthIdx);
+
+  return arranque + ingresosMes - gastosPresupuesto + unassignedNet - consolidacionesRestar - traspasos;
 }
 
 // Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
@@ -2203,13 +2243,8 @@ function calcMonthCloseValue(monthIdx) {
     // Si hay movs, usar real disponible = libreta - pendiente
     return calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
   }
-  // Sin movs: usar la previsión
-  const arranque = calcMonthEndBalance(monthIdx - 1);
-  const mo = state.months[MONTHS[monthIdx]];
-  const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
-  const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
-  const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
-  return arranque + nominas + ingPuntuales - gastosPresupuesto;
+  // Sin movs: usar la previsión con arrastre
+  return calcMonthEndBalance(monthIdx);
 }
 
 /* ==== V2 · TRIPLE BALANCE (libreta / pendiente tarjetas / real disponible) ==== */
