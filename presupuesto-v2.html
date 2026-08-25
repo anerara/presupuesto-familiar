@@ -2271,11 +2271,14 @@ function calcMonthEndBalance(monthIdx) {
 // Verificación por tarjeta: compara compras del mes en la tarjeta vs TARJ.CRDTO del mes siguiente
 function checkCardVerification(cardId, monthIdx) {
   if (!state.movements || monthIdx >= 11) return null;
-  const mm = String(monthIdx + 1).padStart(2, '0');
-  const from = `2026-${mm}-01`;
+  // Verificación ACUMULADA desde enero hasta fin del mes actual.
+  // Los arrastres se autocompensan: una compra procesada tarde queda en el mes de su fecha (compras)
+  // y en el TARJ.CRDTO donde la cargó el banco (pagos). Ambos entran en el acumulado.
+  const from = `2026-01-01`;
   const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  const mm = String(monthIdx + 1).padStart(2, '0');
   const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
-  // Compras (netas: gastos - devoluciones) del mes en esa tarjeta
+  // Compras (netas) en esa tarjeta con fecha entre enero y fin del mes actual
   let compras = 0;
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
@@ -2285,7 +2288,7 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
-  // Traspasos internos DEL MES hacia esta tarjeta (pagos anticipados)
+  // Traspasos internos hacia esta tarjeta en el mismo periodo
   let traspasos = 0;
   for (const m of state.movements) {
     if (!m.isInternalTransfer) continue;
@@ -2293,23 +2296,23 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     traspasos += Math.abs(m.amount);
   }
-  // TARJ.CRDTO del mes siguiente para esa tarjeta
+  // TARJ.CRDTO cargados hasta el 1 del mes SIGUIENTE al actual (para incluir el cargo consolidado del mes)
   const nextMm = String(monthIdx + 2).padStart(2, '0');
-  const nextFrom = `2026-${nextMm}-01`;
-  const nextDays = new Date(2026, monthIdx + 2, 0).getDate();
-  const nextTo = `2026-${nextMm}-${String(nextDays).padStart(2, '0')}`;
+  const nextConsFecha = `2026-${nextMm}-01`;
   let consolidado = 0;
   for (const m of state.movements) {
     if (!m.isCardConsolidation) continue;
     if (m.cardId !== cardId) continue;
-    if (m.date < nextFrom || m.date > nextTo) continue;
+    // Cargos consolidados desde el 01/01 hasta el 01/(mes+1) incluido
+    if (m.date < from || m.date > nextConsFecha) continue;
     consolidado += Math.abs(m.amount);
   }
-  // Total pagado = traspasos anticipados + TARJ.CRDTO consolidado
+  // Total pagado = traspasos + TARJ.CRDTO
   const totalPagado = traspasos + consolidado;
   const diff = compras - totalPagado;
-  const cuadrado = Math.abs(diff) < 0.01;
-  return { compras, traspasos, consolidado, totalPagado, diff, cuadrado, hasData: compras > 0 || totalPagado > 0 };
+  // Tolerancia de 1€ para evitar falsos negativos por redondeos
+  const cuadrado = Math.abs(diff) < 1;
+  return { compras, traspasos, consolidado, totalPagado, diff, cuadrado, hasData: compras > 0 || totalPagado > 0, acumulado: true };
 }
 
 // Devuelve qué usaría el mes SI se cerrase ahora mismo (real disponible o previsión)
@@ -2585,7 +2588,7 @@ function renderCardVerification() {
   if (!rows) { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div class="cv-panel">
-      <div class="cv-title">🔍 Verificación tarjetas — ${MONTHS[currentMonthIdx]}</div>
+      <div class="cv-title">🔍 Verificación tarjetas — acumulado hasta ${MONTHS[currentMonthIdx]}</div>
       ${rows}
     </div>
   `;
