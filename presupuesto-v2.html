@@ -1572,7 +1572,7 @@
 
   <header>
     <h1>💰 Presupuesto v2 · con importación bancaria</h1>
-    <p>Aner & Iratxe · Bilbao</p>
+    <p>Aner & Iratxe · Bilbao <span id="appVersionStamp" style="opacity:.55; font-size:0.8em; font-variant-numeric:tabular-nums;"></span></p>
   </header>
 
   <!-- NAVEGACIÓN PRINCIPAL DE VISTAS -->
@@ -1801,6 +1801,12 @@ enableIndexedDbPersistence(db).catch(err => {
 
 const DOC_ID = 'principal_v2'; // documento v2 (independiente de v1)
 const docRef = doc(db, 'presupuesto', DOC_ID);
+
+// === Sello de versión ===
+// Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
+// o el navegador te están sirviendo una build antigua cacheada.
+const APP_VERSION = '2.3.0';
+const APP_BUILD   = '2026-08-26 · processDate robusto';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -3877,11 +3883,51 @@ document.querySelectorAll('.main-tab').forEach(b => {
 
 /* ---------- Utilidades ---------- */
 
+// Normaliza un texto de cabecera: quita acentos, espacios duros, puntos y dobles
+// espacios. "F. Operación " → "f operacion". Así la detección deja de ser frágil.
+function normHeader(s) {
+  return String(s == null ? '' : s)
+    .replace(/ /g, ' ')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[.:;]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Acepta dd/mm/yyyy, dd-mm-yy, dd.mm.yyyy, yyyy-mm-dd, objetos Date y seriales Excel.
 function parseDateSpanish(s) {
-  if (!s) return '';
-  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return '';
-  return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  if (s === null || s === undefined || s === '') return '';
+
+  if (s instanceof Date && !isNaN(s.getTime())) {
+    return `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+  }
+
+  let str = String(s).replace(/ /g, ' ').trim();
+  if (!str) return '';
+
+  // Serial de Excel (días desde 1899-12-30). Rango razonable: 1990-2100.
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const n = Math.floor(Number(str));
+    if (n > 32000 && n < 74000) {
+      const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+      return dt.toISOString().slice(0, 10);
+    }
+  }
+
+  // ISO: yyyy-mm-dd (o yyyy/mm/dd), con hora opcional detrás
+  let m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+
+  // Español: dd/mm/yyyy, dd-mm-yy, dd.mm.yyyy
+  m = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    let y = m[3];
+    if (y.length === 2) y = (Number(y) >= 70 ? '19' : '20') + y;
+    return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
+
+  return '';
 }
 
 function parseAmount(s) {
@@ -3903,9 +3949,12 @@ function parseAmount(s) {
   return isNaN(n) ? 0 : n;
 }
 
-function movHash(fecha, importe, concepto, cuentaId) {
+// dedupIndex distingue movimientos "gemelos" (misma fecha, importe y concepto).
+// Ojo: para dedupIndex 0 la clave es IDÉNTICA a la de versiones anteriores, para no
+// invalidar los ids de los movimientos ya guardados en Firebase.
+function movHash(fecha, importe, concepto, cuentaId, dedupIndex = 0) {
   const clean = String(concepto || '').trim().replace(/\s+/g, ' ');
-  const key = `${fecha}|${importe.toFixed(2)}|${clean}|${cuentaId}`;
+  const key = `${fecha}|${importe.toFixed(2)}|${clean}|${cuentaId}` + (dedupIndex ? `|${dedupIndex}` : '');
   let h = 5381;
   for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) | 0;
   return 'm_' + (h >>> 0).toString(36);
@@ -4084,10 +4133,12 @@ async function importMovementFiles(files) {
   let allNewMovs = [];
   let totalImported = 0;
   let totalDuplicates = 0;
+  const parseInfos = [];
 
   for (const file of files) {
     try {
-      const movs = await parseMovementFile(file, accId);
+      const { movs, info } = await parseMovementFile(file, accId);
+      parseInfos.push(info);
       for (const m of movs) {
         const exists = state.movements.some(x => x.id === m.id);
         if (exists) totalDuplicates++;
@@ -4124,7 +4175,26 @@ async function importMovementFiles(files) {
   updateCuadreBadge();
   renderAll(); // refrescar presupuesto con nuevos balances de tarjeta
   switchView('cuadre');
-  toast(`${totalImported} importados · ${totalDuplicates} duplicados · ${autoAssigned} auto-asignados`);
+
+  // Diagnóstico visible: si la fecha de proceso no se ha guardado, quiero enterarme
+  // AQUÍ, no tres semanas después cuadrando enero a mano.
+  const nuevosConProc = allNewMovs.filter(m => m.processDate).length;
+  const sinColumna = parseInfos.filter(i => !i.hasProcCol);
+
+  let msg = `${totalImported} importados · ${nuevosConProc} con fecha de proceso · ${totalDuplicates} duplicados · ${autoAssigned} auto-asignados`;
+  toast(msg, totalImported > 0 && nuevosConProc === 0);
+
+  if (sinColumna.length) {
+    console.warn('[import] Ficheros sin columna de fecha de proceso:',
+      sinColumna.map(i => `${i.file} → ${JSON.stringify(i.header)}`).join('\n'));
+    setTimeout(() => toast(
+      `⚠️ Sin columna "fecha de proceso" en: ${sinColumna.map(i => i.file).join(', ')}`, true
+    ), 3200);
+  }
+  console.table(parseInfos.map(i => ({
+    fichero: i.file, columnaProceso: i.hasProcCol ? 'sí' : 'NO',
+    filas: i.parsed, conFechaProceso: i.withProcessDate
+  })));
 }
 
 async function parseMovementFile(file, accId) {
@@ -4136,25 +4206,44 @@ async function parseMovementFile(file, accId) {
 
   let headerIdx = -1;
   let idxFecha = -1, idxFechaProc = -1, idxConcepto = -1, idxImporte = -1;
+  let headerRaw = null;
 
-  // Buscar cabecera flexible: acepta "fecha" o "fecha de operación", "concepto", "importe"
-  // También "fecha de proceso" o "fecha proceso" opcional (para verificación de tarjetas)
-  for (let i = 0; i < Math.min(rows.length, 20); i++) {
-    const row = rows[i].map(c => String(c || '').toLowerCase().trim());
-    const fFecha = row.findIndex(c => c === 'fecha' || c === 'fecha operación' || c === 'fecha de operación' || c === 'fecha operacion' || c === 'fecha de operacion');
-    const fFechaProc = row.findIndex(c => c === 'fecha proceso' || c === 'fecha de proceso' || c === 'fecha valor');
-    const fConcepto = row.findIndex(c => c === 'concepto' || c === 'descripción' || c === 'descripcion');
-    const fImporte = row.findIndex(c => c === 'importe' || c === 'importe (€)' || c === 'cantidad');
+  // Detección de cabecera TOLERANTE: sin acentos, sin espacios duros, por contenido.
+  // Antes era comparación exacta (=== 'fecha de proceso') y cualquier variante del
+  // banco ("F. proceso", "Fecha cargo") dejaba idxFechaProc = -1 en silencio.
+  const esColFecha = c => c === 'fecha' || /\bfecha\b/.test(c) || /^f\b/.test(c);
+
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const row = (rows[i] || []).map(normHeader);
+    if (!row.length) continue;
+
+    let fFecha = row.findIndex(c => esColFecha(c) && /\boperacion\b|\bop\b/.test(c));
+    if (fFecha === -1) fFecha = row.findIndex(c => c === 'fecha');
+    if (fFecha === -1) fFecha = row.findIndex(c => esColFecha(c) && !/proceso|valor|cargo|contable|liquidac/.test(c));
+
+    const fFechaProc = row.findIndex((c, j) =>
+      j !== fFecha && esColFecha(c) && /proceso|valor|cargo|contable|liquidac|apunte/.test(c)
+    );
+    const fConcepto = row.findIndex(c => /concepto|descripcion|detalle|comercio|establecimiento/.test(c));
+    const fImporte  = row.findIndex(c => /importe|cantidad|euros/.test(c));
+
     if (fFecha !== -1 && fConcepto !== -1 && fImporte !== -1) {
       headerIdx = i;
       idxFecha = fFecha;
-      idxFechaProc = fFechaProc; // puede ser -1 si no existe
+      idxFechaProc = fFechaProc; // puede ser -1 si el extracto no la trae
       idxConcepto = fConcepto;
       idxImporte = fImporte;
+      headerRaw = rows[i];
       break;
     }
   }
   if (headerIdx === -1) throw new Error('No se encuentra cabecera fecha/concepto/importe');
+
+  console.info(`[import] ${file.name} · cabecera en fila ${headerIdx}:`, headerRaw,
+    { idxFecha, idxFechaProc, idxConcepto, idxImporte });
+  if (idxFechaProc === -1) {
+    console.warn(`[import] ${file.name}: este extracto NO trae columna de fecha de proceso.`, headerRaw);
+  }
 
   const movs = [];
   const dedupSeen = new Map();
@@ -4178,7 +4267,20 @@ async function parseMovementFile(file, accId) {
     if (fechaProcISO) mov.processDate = fechaProcISO;
     movs.push(mov);
   }
-  return movs;
+
+  const conProc = movs.filter(m => m.processDate).length;
+  console.info(`[import] ${file.name}: ${movs.length} filas · ${conProc} con fecha de proceso`);
+
+  return {
+    movs,
+    info: {
+      file: file.name,
+      header: headerRaw,
+      hasProcCol: idxFechaProc !== -1,
+      parsed: movs.length,
+      withProcessDate: conProc
+    }
+  };
 }
 
 /* ---------- Reglas ---------- */
@@ -5795,6 +5897,16 @@ function showBulkAssignModal(movIds) {
 }
 
 updateCuadreBadge();
+
+// Sello de versión: si esto no coincide con lo que acabas de desplegar, el navegador
+// o GitHub Pages te están sirviendo una build vieja (Ctrl+Shift+R para forzar).
+(() => {
+  const el = document.getElementById('appVersionStamp');
+  if (el) el.textContent = `· v${APP_VERSION}`;
+  el && (el.title = APP_BUILD);
+  console.info(`%c Presupuesto v2 · v${APP_VERSION} · ${APP_BUILD} `,
+    'background:#5eead4;color:#0f1419;font-weight:700;padding:2px 6px;border-radius:4px');
+})();
 
 renderAll();
 setSyncStatus('connecting');
