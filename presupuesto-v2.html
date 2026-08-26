@@ -1808,8 +1808,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.5.0';
-const APP_BUILD   = '2026-08-26 · tarjetas mes a mes, sin acumulados';
+const APP_VERSION = '2.5.1';
+const APP_BUILD   = '2026-08-26 · saldado por calendario';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2327,7 +2327,8 @@ function checkCardVerification(cardId, monthIdx) {
   }
 
   let compras = 0, cobrado = 0, pendiente = 0;
-  const cargos = new Set();
+  const porCargo = new Map();      // mes de cargo → importe que aporta
+  let sinProceso = 0;
 
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
@@ -2336,15 +2337,41 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     const val = Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
     compras += val;
+    if (!m.processDate) sinProceso++;
     const mesCargo = chargeMonthFor(m);
-    if (mesesConCargo.has(mesCargo)) { cobrado += val; cargos.add(mesCargo); }
-    else pendiente += val;
+    porCargo.set(mesCargo, (porCargo.get(mesCargo) || 0) + val);
   }
 
-  const saldado = Math.abs(pendiente) < 0.01;
+  // REGLA: una compra de tarjeta la cobran como muy tarde en el cargo del día 1 de
+  // dos meses después. Si ese cargo ya ha pasado, el mes está saldado. Y esto no
+  // necesita fecha de proceso: es una fecha del calendario, no un dato del extracto.
+  const lim = new Date(2026, monthIdx + 2, 1);
+  const mesLimite = `${lim.getFullYear()}-${String(lim.getMonth() + 1).padStart(2, '0')}`;
+  const saldadoPorCalendario = [...mesesConCargo].some(mes => mes >= mesLimite);
+
+  if (saldadoPorCalendario) {
+    cobrado = compras; pendiente = 0;
+  } else {
+    for (const [mes, val] of porCargo) {
+      if (mesesConCargo.has(mes)) cobrado += val; else pendiente += val;
+    }
+  }
+
+  // Solo listamos los cargos que aportan dinero de verdad. Un par que se anula
+  // (cuota de mantenimiento -45 y su condonación +45) aporta 0,00: no es un cargo,
+  // y pintarlo hacía parecer que el mes se pagaba en dos veces cuando no.
+  // El desglose por cargo solo se enseña si TODOS los movimientos del mes traen su
+  // fecha de proceso. Si falta alguna, la app no sabe en qué cargo lo liquidaron:
+  // antes lo suponía y te daba una fecha inventada. Ahora se calla.
+  const cargos = sinProceso > 0 ? [] : [...porCargo.entries()]
+    .filter(([, v]) => Math.abs(v) > 0.005)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([mes, importe]) => ({ mes, importe }));
+
   return {
-    compras, cobrado, pendiente, saldado,
-    cargos: [...cargos].sort(),
+    compras, cobrado, pendiente,
+    saldado: Math.abs(pendiente) < 0.01,
+    cargos, sinProceso,
     hasData: Math.abs(compras) > 0.005
   };
 }
@@ -2604,8 +2631,9 @@ function renderCardVerification() {
     const chk = checkCardVerification(card.id, currentMonthIdx);
     if (!chk || !chk.hasData) return '';
     const icon = chk.saldado ? '<span style="color:var(--income);">\u2713</span>' : '<span style="color:var(--warning);">\u23f3</span>';
+    // "480,09 el 01/02" \u00b7 o "1.700,00 el 01/02 y 85,69 el 01/03" si va en dos cargos
     const cargosTxt = chk.cargos.length
-      ? chk.cargos.map(c => '01/' + c.slice(5) + '/' + c.slice(0, 4)).join(' y ')
+      ? chk.cargos.map(c => `${fmt(c.importe)} el 01/${c.mes.slice(5)}/${c.mes.slice(0, 4)}`).join(' y ')
       : '\u2014';
     return `
       <div class="cv-row">
@@ -2613,7 +2641,7 @@ function renderCardVerification() {
         <div class="cv-nums">
           <span title="Lo que se compr\u00f3 con esta tarjeta en ${nombreMes}, neto de devoluciones">Gasto de ${nombreMes}: <strong>${fmt(chk.compras)}</strong></span>
           ${chk.saldado
-            ? `<span style="color:var(--income);">saldado \u00b7 cobrado el ${cargosTxt}</span>`
+            ? `<span style="color:var(--income);">saldado${chk.cargos.length ? ' \u00b7 ' + cargosTxt : ''}</span>`
             : `<span title="Ya cobrado por Kutxabank">Cobrado: <strong>${fmt(chk.cobrado)}</strong></span>
                <span style="color:var(--warning);">pendiente de cobro: <strong>${fmt(chk.pendiente)}</strong></span>`}
         </div>
