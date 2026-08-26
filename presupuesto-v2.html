@@ -1805,8 +1805,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.4.0';
-const APP_BUILD   = '2026-08-26 · verificación acumulada por ciclo';
+const APP_VERSION = '2.4.1';
+const APP_BUILD   = '2026-08-26 · calibración verificable';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2358,6 +2358,32 @@ function cardFirstDataMonth(cardId) {
   return -1;
 }
 
+// Primer cargo TARJ.CRDTO de la tarjeta. En el mes de calibración, el ajuste inicial
+// DEBERÍA valer exactamente esto: ese cargo liquidó compras anteriores a los datos.
+// Si no coincide, la diferencia son compras de más (o de menos) en el primer ciclo.
+function cardFirstCharge(cardId) {
+  let best = null;
+  for (const m of state.movements) {
+    if (!m.isCardConsolidation || m.cardId !== cardId) continue;
+    if (!best || m.date < best.date) best = { date: m.date, amount: Math.abs(m.amount) };
+  }
+  return best;
+}
+
+// Movimientos de la tarjeta sin fecha de proceso dentro del ciclo. Son los que
+// pueden caer en el mes equivocado, porque hay que suponer que proceso = operación.
+function cardMovsWithoutProcessDate(cardId, corteISO) {
+  let n = 0, importe = 0;
+  for (const m of state.movements) {
+    if (m.accountId !== cardId) continue;
+    if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
+    if (m.processDate) continue;
+    if (m.date >= corteISO) continue;
+    n++; importe += Math.abs(m.amount);
+  }
+  return { n, importe };
+}
+
 function checkCardVerification(cardId, monthIdx) {
   if (!state.movements) return null;
   const corte = cardCutISO(monthIdx);
@@ -2370,6 +2396,24 @@ function checkCardVerification(cardId, monthIdx) {
   const diff = (compras + ajuste) - pagos.total;
   const cuadrado = Math.abs(diff) < 1;
 
+  const esMesDeCalibracion = monthIdx === primerMes && Math.abs(ajuste) > 0.005;
+
+  // En el mes de calibración el 0,00 es tautológico, así que la comprobación real
+  // es otra: ¿el ajuste coincide con el primer TARJ.CRDTO? Si no, sobran compras.
+  let calib = null;
+  if (esMesDeCalibracion) {
+    const primerCargo = cardFirstCharge(cardId);
+    if (primerCargo) {
+      const desvio = ajuste - primerCargo.amount;   // negativo = compras de más
+      calib = {
+        cargoFecha: primerCargo.date,
+        cargoImporte: primerCargo.amount,
+        desvio,
+        coincide: Math.abs(desvio) < 1
+      };
+    }
+  }
+
   return {
     corte,
     compras,                    // acumulado de compras netas con proceso < corte
@@ -2378,7 +2422,8 @@ function checkCardVerification(cardId, monthIdx) {
     consolidado: pagos.consolidado, // acumulado de TARJ.CRDTO
     totalPagado: pagos.total,
     diff, cuadrado,
-    esMesDeCalibracion: monthIdx === primerMes && Math.abs(ajuste) > 0.005,
+    esMesDeCalibracion, calib,
+    sinProceso: cardMovsWithoutProcessDate(cardId, corte),
     hasData: primerMes !== -1 && monthIdx >= primerMes && (Math.abs(compras) > 0.005 || pagos.total > 0.005)
   };
 }
@@ -2638,11 +2683,18 @@ function renderCardVerification() {
   const rows = cards.map(card => {
     const chk = checkCardVerification(card.id, currentMonthIdx);
     if (!chk || !chk.hasData) return '';
-    const icon = chk.cuadrado ? '<span style="color:var(--income);">✓</span>' : '<span style="color:var(--warning);">⚠️</span>';
-    const badgeColor = chk.cuadrado ? 'var(--income)' : 'var(--warning)';
-    const diffText = chk.cuadrado
-      ? (chk.esMesDeCalibracion ? 'calibración' : 'cuadrado')
-      : `descuadre: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
+    // En el mes de calibración manda el veredicto del ajuste, no el 0,00 tautológico.
+    const ok = chk.esMesDeCalibracion && chk.calib ? chk.calib.coincide : chk.cuadrado;
+    const icon = ok ? '<span style="color:var(--income);">✓</span>' : '<span style="color:var(--warning);">⚠️</span>';
+    const badgeColor = ok ? 'var(--income)' : 'var(--warning)';
+    let diffText;
+    if (chk.esMesDeCalibracion && chk.calib) {
+      diffText = chk.calib.coincide
+        ? 'verificado'
+        : `sobran ${fmt(Math.abs(chk.calib.desvio))} en compras`;
+    } else {
+      diffText = chk.cuadrado ? 'cuadrado' : `descuadre: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
+    }
     const cortePretty = chk.corte.split('-').reverse().join('/');
     return `
       <div class="cv-row">
@@ -2655,6 +2707,18 @@ function renderCardVerification() {
           <span style="color:${badgeColor};">${diffText}</span>
         </div>
       </div>
+      ${chk.esMesDeCalibracion && chk.calib && !chk.calib.coincide ? `
+      <div style="font-size:0.76rem; color:var(--warning); padding:2px 0 8px 18px; line-height:1.5;">
+        El ajuste inicial calculado (<strong>${fmt(chk.ajuste)}</strong>) debería coincidir con el primer
+        TARJ.CRDTO, el del ${chk.calib.cargoFecha.split('-').reverse().join('/')} (<strong>${fmt(chk.calib.cargoImporte)}</strong>).
+        Que salga ${chk.calib.desvio < 0 ? 'más bajo' : 'más alto'} significa que a esta tarjeta le
+        ${chk.calib.desvio < 0 ? 'sobran' : 'faltan'} <strong>${fmt(Math.abs(chk.calib.desvio))}</strong> en compras dentro del primer ciclo.
+        ${chk.sinProceso.n ? `Sospechosos: <strong>${chk.sinProceso.n}</strong> movimientos sin fecha de proceso (${fmt(chk.sinProceso.importe)}) — reimporta ese extracto para que la app sepa a qué ciclo pertenecen.` : 'Todos tienen fecha de proceso: busca movimientos repetidos con el concepto ligeramente distinto.'}
+      </div>` : ''}
+      ${!chk.esMesDeCalibracion && !chk.cuadrado && chk.sinProceso.n ? `
+      <div style="font-size:0.76rem; color:var(--text-faint); padding:2px 0 8px 18px;">
+        ${chk.sinProceso.n} movimientos sin fecha de proceso (${fmt(chk.sinProceso.importe)}) pueden estar cayendo en el ciclo equivocado.
+      </div>` : ''}
     `;
   }).filter(Boolean).join('');
   if (!rows) { el.innerHTML = ''; return; }
@@ -2668,7 +2732,7 @@ function renderCardVerification() {
       ${rows}
       <div style="font-size:0.72rem; color:var(--text-faint); margin-top:8px; line-height:1.45;">
         Compara <em>todo</em> lo comprado (por fecha de proceso) contra <em>todo</em> lo pagado hasta el cargo del día 1 siguiente.
-        ${algunaCalibracion ? '<br><strong style="color:var(--info);">Calibración:</strong> este es el primer mes con datos, así que su cuadre es por construcción — el ajuste inicial absorbe lo comprado antes de lo importado. La verificación real empieza el mes siguiente.' : ''}
+        ${algunaCalibracion ? '<br><strong style="color:var(--info);">Primer mes con datos:</strong> aquí el 0,00 no demuestra nada, porque el ajuste inicial absorbe lo comprado antes de lo importado. La prueba de verdad es otra: ese ajuste tiene que salir igual al primer cargo TARJ.CRDTO. Si coincide, el mes está <em>verificado</em>; si no, la diferencia son compras sobrantes.' : ''}
       </div>
     </div>
   `;
