@@ -1707,6 +1707,8 @@
           <option value="unassigned">Sin asignar</option>
           <option value="assigned">Asignados</option>
           <option value="ignored">Ignorados</option>
+          <option value="noproc">⚠️ Sin fecha de proceso</option>
+          <option value="conproc">Con fecha de proceso</option>
         </select>
         <button class="btn btn-sm" id="btnAddManualMov" style="margin-left:auto;" title="Añadir un movimiento manualmente (útil para cargos duplicados que el hash detectó como iguales)">➕ Añadir mov manual</button>
         <button class="btn btn-sm" id="btnRedetect" title="Vuelve a detectar consolidaciones y traspasos en los movimientos ya importados">🔄 Re-detectar cargos y traspasos</button>
@@ -1805,8 +1807,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.4.1';
-const APP_BUILD   = '2026-08-26 · calibración verificable';
+const APP_VERSION = '2.4.2';
+const APP_BUILD   = '2026-08-26 · filtro sin fecha de proceso';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4782,6 +4784,9 @@ function renderMovements() {
   if (movFilters.status === 'unassigned') filtered = filtered.filter(m => !m.assignedTo && !m.ignored && !m.isCardConsolidation && !m.isInternalTransfer);
   else if (movFilters.status === 'assigned') filtered = filtered.filter(m => m.assignedTo);
   else if (movFilters.status === 'ignored') filtered = filtered.filter(m => m.ignored || m.isCardConsolidation);
+  // Sin fecha de proceso: los que pueden estar cayendo en el ciclo de tarjeta equivocado.
+  else if (movFilters.status === 'noproc') filtered = filtered.filter(m => !m.processDate && !m.isCardConsolidation && !m.isInternalTransfer);
+  else if (movFilters.status === 'conproc') filtered = filtered.filter(m => !!m.processDate);
 
   filtered.sort((a, b) => b.date.localeCompare(a.date));
 
@@ -4814,12 +4819,21 @@ function renderMovementRow(m) {
   const isSelected = selectedMovIds.has(m.id);
   // No permitir seleccionar consolidations ni traspasos internos
   const canSelect = !m.isCardConsolidation && !m.isInternalTransfer;
+  const esTarjeta = acc?.type === 'card';
   return `
     <div class="mov-row ${status} ${isSelected ? 'row-selected' : ''}" data-id="${m.id}">
       ${canSelect
         ? `<input type="checkbox" class="mov-check" data-check-id="${m.id}" ${isSelected ? 'checked' : ''} title="Seleccionar para asignar en bloque">`
         : `<span class="mov-check-placeholder"></span>`}
-      <div class="mov-date">${fmtDateShort(m.date)}</div>
+      <div class="mov-date">
+        ${fmtDateShort(m.date)}
+        ${esTarjeta && m.processDate && m.processDate !== m.date
+          ? `<span style="display:block; font-size:0.66rem; color:var(--info);" title="Fecha de proceso: el ciclo en el que Kutxabank lo cobra">→ ${fmtDateShort(m.processDate)}</span>`
+          : ''}
+        ${esTarjeta && !m.processDate && canSelect
+          ? `<span style="display:block; font-size:0.66rem; color:var(--warning);" title="Sin fecha de proceso: la app tiene que suponer que se procesó el día de la compra, y puede caer en el ciclo equivocado. Reimporta el extracto que tenga la columna.">sin proc.</span>`
+          : ''}
+      </div>
       <div class="mov-concept" title="${escapeHTML(m.concept)}">
         ${escapeHTML(m.concept)}
         <span class="mov-concept-tag">${escapeHTML(accName)} · ${tag}</span>
