@@ -1712,6 +1712,7 @@
         </select>
         <button class="btn btn-sm" id="btnAddManualMov" style="margin-left:auto;" title="Añadir un movimiento manualmente (útil para cargos duplicados que el hash detectó como iguales)">➕ Añadir mov manual</button>
         <button class="btn btn-sm" id="btnRedetect" title="Vuelve a detectar consolidaciones y traspasos en los movimientos ya importados">🔄 Re-detectar cargos y traspasos</button>
+        <button class="btn btn-sm" id="btnArrastre2025" title="Ignora todos los movimientos de 2025 y los sustituye por un único gasto puntual en enero">🧾 Arrastre 2025</button>
         <button class="btn btn-sm" id="btnClearAssign">🔄 Resetear asignaciones</button>
         <button class="btn btn-sm" id="btnClearMovs">🗑️ Borrar todos</button>
       </div>
@@ -1807,8 +1808,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.4.2';
-const APP_BUILD   = '2026-08-26 · filtro sin fecha de proceso';
+const APP_VERSION = '2.5.0';
+const APP_BUILD   = '2026-08-26 · tarjetas mes a mes, sin acumulados';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2296,137 +2297,55 @@ function calcMonthEndBalance(monthIdx) {
    movimiento que falte en marzo sigue apareciendo en abril, mayo y junio: es
    imposible que un descuadre se compense solo y quede oculto.                    */
 
-// Fecha de corte del mes: el TARJ.CRDTO que lo liquida. Enero → 2026-02-01.
-function cardCutISO(monthIdx) {
-  const y = monthIdx >= 11 ? 2027 : 2026;
-  const m = monthIdx >= 11 ? 1 : monthIdx + 2;
-  return `${y}-${String(m).padStart(2, '0')}-01`;
-}
+/* ==== V2.5 · MES A MES. SIN ACUMULADOS. ====
+   El gasto de tarjeta de un mes es lo que se COMPRÓ ese mes. Punto.
+   Kutxabank lo cobra como muy tarde el día 1 de dos meses después: el 01/02 si lo
+   procesó en enero, el 01/03 si lo procesó a primeros de febrero. En cuanto han
+   pasado esos cargos, el mes está SALDADO y no se vuelve a tocar nunca más.
+   Cada mes se mira solo. Nada se arrastra, nada se acumula, nada que interpretar. */
 
-// Compras NETAS de una tarjeta con fecha de proceso ANTERIOR al corte.
-// Negativos suman (gasto), positivos restan (devoluciones, condonaciones).
-// Se excluyen consolidaciones y abonos internos: no son gasto.
-function cardPurchasesBefore(cardId, corteISO) {
-  let total = 0;
-  for (const m of state.movements) {
-    if (m.accountId !== cardId) continue;
-    if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
-    const ref = m.processDate || m.date;
-    if (ref >= corteISO) continue;
-    total += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
-  }
-  return total;
-}
-
-// Pagos hechos a una tarjeta hasta el corte INCLUIDO, vistos desde la cuenta
-// corriente: cargos TARJ.CRDTO + traspasos anticipados.
-function cardPaymentsUpTo(cardId, corteISO) {
-  let consolidado = 0, traspasos = 0;
-  for (const m of state.movements) {
-    if (m.date > corteISO) continue;
-    if (m.isCardConsolidation && m.cardId === cardId) consolidado += Math.abs(m.amount);
-    else if (m.isInternalTransfer && m.transferToCardId === cardId) traspasos += Math.abs(m.amount);
-  }
-  return { consolidado, traspasos, total: consolidado + traspasos };
-}
-
-// Ajuste inicial: compras anteriores a los datos importados que ya se pagaron.
-// Ejemplo real: el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están
-// en la app. Sin este ajuste, todos los meses saldrían descuadrados por ese importe.
-// Se autocalibra en el primer corte con datos; se puede fijar a mano en la cuenta.
-function cardOpeningAdjust(cardId) {
-  const card = state.accounts.find(a => a.id === cardId);
-  const manual = card?.saldoInicial2026;
-  if (manual !== undefined && manual !== null && manual !== '') return Number(manual) || 0;
-  for (let i = 0; i <= 11; i++) {
-    const corte = cardCutISO(i);
-    const pagos = cardPaymentsUpTo(cardId, corte);
-    const compras = cardPurchasesBefore(cardId, corte);
-    if (pagos.total > 0.005 || Math.abs(compras) > 0.005) {
-      return Math.round((pagos.total - compras) * 100) / 100;
-    }
-  }
-  return 0;
-}
-
-// Primer mes con datos: es el que sirve de calibración, así que su 0,00 no
-// demuestra nada por sí solo. Lo marcamos para no dar una falsa sensación de OK.
-function cardFirstDataMonth(cardId) {
-  for (let i = 0; i <= 11; i++) {
-    const corte = cardCutISO(i);
-    const pagos = cardPaymentsUpTo(cardId, corte);
-    if (pagos.total > 0.005 || Math.abs(cardPurchasesBefore(cardId, corte)) > 0.005) return i;
-  }
-  return -1;
-}
-
-// Primer cargo TARJ.CRDTO de la tarjeta. En el mes de calibración, el ajuste inicial
-// DEBERÍA valer exactamente esto: ese cargo liquidó compras anteriores a los datos.
-// Si no coincide, la diferencia son compras de más (o de menos) en el primer ciclo.
-function cardFirstCharge(cardId) {
-  let best = null;
-  for (const m of state.movements) {
-    if (!m.isCardConsolidation || m.cardId !== cardId) continue;
-    if (!best || m.date < best.date) best = { date: m.date, amount: Math.abs(m.amount) };
-  }
-  return best;
-}
-
-// Movimientos de la tarjeta sin fecha de proceso dentro del ciclo. Son los que
-// pueden caer en el mes equivocado, porque hay que suponer que proceso = operación.
-function cardMovsWithoutProcessDate(cardId, corteISO) {
-  let n = 0, importe = 0;
-  for (const m of state.movements) {
-    if (m.accountId !== cardId) continue;
-    if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
-    if (m.processDate) continue;
-    if (m.date >= corteISO) continue;
-    n++; importe += Math.abs(m.amount);
-  }
-  return { n, importe };
+// Mes del cargo TARJ.CRDTO que liquida una compra: el siguiente al de su fecha de
+// proceso. Compra procesada el 08/01 → la cobran el 01/02. Procesada el 01/02 → 01/03.
+function chargeMonthFor(mov) {
+  const ref = mov.processDate || mov.date;
+  const d = new Date(ref + 'T00:00:00');
+  const y = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+  const m = d.getMonth() === 11 ? 1 : d.getMonth() + 2;
+  return `${y}-${String(m).padStart(2, '0')}`;
 }
 
 function checkCardVerification(cardId, monthIdx) {
   if (!state.movements) return null;
-  const corte = cardCutISO(monthIdx);
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const to = `2026-${mm}-${String(new Date(2026, monthIdx + 1, 0).getDate()).padStart(2, '0')}`;
 
-  const compras = cardPurchasesBefore(cardId, corte);
-  const pagos = cardPaymentsUpTo(cardId, corte);
-  const ajuste = cardOpeningAdjust(cardId);
-  const primerMes = cardFirstDataMonth(cardId);
-
-  const diff = (compras + ajuste) - pagos.total;
-  const cuadrado = Math.abs(diff) < 1;
-
-  const esMesDeCalibracion = monthIdx === primerMes && Math.abs(ajuste) > 0.005;
-
-  // En el mes de calibración el 0,00 es tautológico, así que la comprobación real
-  // es otra: ¿el ajuste coincide con el primer TARJ.CRDTO? Si no, sobran compras.
-  let calib = null;
-  if (esMesDeCalibracion) {
-    const primerCargo = cardFirstCharge(cardId);
-    if (primerCargo) {
-      const desvio = ajuste - primerCargo.amount;   // negativo = compras de más
-      calib = {
-        cargoFecha: primerCargo.date,
-        cargoImporte: primerCargo.amount,
-        desvio,
-        coincide: Math.abs(desvio) < 1
-      };
-    }
+  // Meses en los que esta tarjeta tiene un cargo TARJ.CRDTO ya registrado.
+  const mesesConCargo = new Set();
+  for (const m of state.movements) {
+    if (m.isCardConsolidation && m.cardId === cardId) mesesConCargo.add(m.date.slice(0, 7));
   }
 
+  let compras = 0, cobrado = 0, pendiente = 0;
+  const cargos = new Set();
+
+  for (const m of state.movements) {
+    if (m.accountId !== cardId) continue;
+    if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
+    // Fecha de OPERACIÓN: el gasto pertenece al mes en que se compró. Siempre.
+    if (m.date < from || m.date > to) continue;
+    const val = Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
+    compras += val;
+    const mesCargo = chargeMonthFor(m);
+    if (mesesConCargo.has(mesCargo)) { cobrado += val; cargos.add(mesCargo); }
+    else pendiente += val;
+  }
+
+  const saldado = Math.abs(pendiente) < 0.01;
   return {
-    corte,
-    compras,                    // acumulado de compras netas con proceso < corte
-    ajuste,                     // liquidación anterior a los datos importados
-    traspasos: pagos.traspasos, // acumulado de pagos anticipados
-    consolidado: pagos.consolidado, // acumulado de TARJ.CRDTO
-    totalPagado: pagos.total,
-    diff, cuadrado,
-    esMesDeCalibracion, calib,
-    sinProceso: cardMovsWithoutProcessDate(cardId, corte),
-    hasData: primerMes !== -1 && monthIdx >= primerMes && (Math.abs(compras) > 0.005 || pagos.total > 0.005)
+    compras, cobrado, pendiente, saldado,
+    cargos: [...cargos].sort(),
+    hasData: Math.abs(compras) > 0.005
   };
 }
 
@@ -2678,64 +2597,35 @@ function renderCardVerification() {
   const el = document.getElementById('cardVerification');
   if (!el) return;
   const cards = state.accounts.filter(a => a.type === 'card');
-  if (!hasImportedMovements() || cards.length === 0) {
-    el.innerHTML = '';
-    return;
-  }
+  if (!hasImportedMovements() || cards.length === 0) { el.innerHTML = ''; return; }
+
+  const nombreMes = MONTHS[currentMonthIdx];
   const rows = cards.map(card => {
     const chk = checkCardVerification(card.id, currentMonthIdx);
     if (!chk || !chk.hasData) return '';
-    // En el mes de calibración manda el veredicto del ajuste, no el 0,00 tautológico.
-    const ok = chk.esMesDeCalibracion && chk.calib ? chk.calib.coincide : chk.cuadrado;
-    const icon = ok ? '<span style="color:var(--income);">✓</span>' : '<span style="color:var(--warning);">⚠️</span>';
-    const badgeColor = ok ? 'var(--income)' : 'var(--warning)';
-    let diffText;
-    if (chk.esMesDeCalibracion && chk.calib) {
-      diffText = chk.calib.coincide
-        ? 'verificado'
-        : `sobran ${fmt(Math.abs(chk.calib.desvio))} en compras`;
-    } else {
-      diffText = chk.cuadrado ? 'cuadrado' : `descuadre: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
-    }
-    const cortePretty = chk.corte.split('-').reverse().join('/');
+    const icon = chk.saldado ? '<span style="color:var(--income);">\u2713</span>' : '<span style="color:var(--warning);">\u23f3</span>';
+    const cargosTxt = chk.cargos.length
+      ? chk.cargos.map(c => '01/' + c.slice(5) + '/' + c.slice(0, 4)).join(' y ')
+      : '\u2014';
     return `
       <div class="cv-row">
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
-          <span title="Todo lo comprado en esta tarjeta con fecha de proceso anterior al ${cortePretty}, neto de devoluciones">Comprado hasta ${cortePretty}: <strong>${fmt(chk.compras)}</strong></span>
-          ${Math.abs(chk.ajuste) > 0.005 ? `<span title="Compras anteriores a los datos importados que ya se pagaron (p.ej. el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están en la app)" style="color:var(--info);">Ajuste inicial: <strong>${fmt(chk.ajuste)}</strong></span>` : ''}
-          <span title="Traspasos anticipados acumulados hacia esta tarjeta">Anticipos: <strong>${fmt(chk.traspasos)}</strong></span>
-          <span title="Suma de todos los cargos TARJ.CRDTO hasta el ${cortePretty} incluido">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
-          <span style="color:${badgeColor};">${diffText}</span>
+          <span title="Lo que se compr\u00f3 con esta tarjeta en ${nombreMes}, neto de devoluciones">Gasto de ${nombreMes}: <strong>${fmt(chk.compras)}</strong></span>
+          ${chk.saldado
+            ? `<span style="color:var(--income);">saldado \u00b7 cobrado el ${cargosTxt}</span>`
+            : `<span title="Ya cobrado por Kutxabank">Cobrado: <strong>${fmt(chk.cobrado)}</strong></span>
+               <span style="color:var(--warning);">pendiente de cobro: <strong>${fmt(chk.pendiente)}</strong></span>`}
         </div>
       </div>
-      ${chk.esMesDeCalibracion && chk.calib && !chk.calib.coincide ? `
-      <div style="font-size:0.76rem; color:var(--warning); padding:2px 0 8px 18px; line-height:1.5;">
-        El ajuste inicial calculado (<strong>${fmt(chk.ajuste)}</strong>) debería coincidir con el primer
-        TARJ.CRDTO, el del ${chk.calib.cargoFecha.split('-').reverse().join('/')} (<strong>${fmt(chk.calib.cargoImporte)}</strong>).
-        Que salga ${chk.calib.desvio < 0 ? 'más bajo' : 'más alto'} significa que a esta tarjeta le
-        ${chk.calib.desvio < 0 ? 'sobran' : 'faltan'} <strong>${fmt(Math.abs(chk.calib.desvio))}</strong> en compras dentro del primer ciclo.
-        ${chk.sinProceso.n ? `Sospechosos: <strong>${chk.sinProceso.n}</strong> movimientos sin fecha de proceso (${fmt(chk.sinProceso.importe)}) — reimporta ese extracto para que la app sepa a qué ciclo pertenecen.` : 'Todos tienen fecha de proceso: busca movimientos repetidos con el concepto ligeramente distinto.'}
-      </div>` : ''}
-      ${!chk.esMesDeCalibracion && !chk.cuadrado && chk.sinProceso.n ? `
-      <div style="font-size:0.76rem; color:var(--text-faint); padding:2px 0 8px 18px;">
-        ${chk.sinProceso.n} movimientos sin fecha de proceso (${fmt(chk.sinProceso.importe)}) pueden estar cayendo en el ciclo equivocado.
-      </div>` : ''}
     `;
   }).filter(Boolean).join('');
+
   if (!rows) { el.innerHTML = ''; return; }
-  const algunaCalibracion = cards.some(c => {
-    const k = checkCardVerification(c.id, currentMonthIdx);
-    return k && k.hasData && k.esMesDeCalibracion;
-  });
   el.innerHTML = `
     <div class="cv-panel">
-      <div class="cv-title">🔍 Verificación tarjetas — acumulado hasta el corte de ${MONTHS[currentMonthIdx]}</div>
+      <div class="cv-title">\ud83d\udcb3 Tarjetas \u2014 ${nombreMes}</div>
       ${rows}
-      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:8px; line-height:1.45;">
-        Compara <em>todo</em> lo comprado (por fecha de proceso) contra <em>todo</em> lo pagado hasta el cargo del día 1 siguiente.
-        ${algunaCalibracion ? '<br><strong style="color:var(--info);">Primer mes con datos:</strong> aquí el 0,00 no demuestra nada, porque el ajuste inicial absorbe lo comprado antes de lo importado. La prueba de verdad es otra: ese ajuste tiene que salir igual al primer cargo TARJ.CRDTO. Si coincide, el mes está <em>verificado</em>; si no, la diferencia son compras sobrantes.' : ''}
-      </div>
     </div>
   `;
 }
@@ -4197,6 +4087,52 @@ document.getElementById('btnRedetect').onclick = () => {
   toast(`✅ Detectados ${nuevosCons} nuevos cargos y ${nuevosTr} nuevos traspasos internos`);
 };
 
+// Arrastre 2025: los movimientos de 2025 que arrastran los extractos de enero no
+// pertenecen a ningún mes de 2026, pero su dinero sí salió de la cuenta en 2026.
+// En vez de repartirlos, se ignoran todos y se sustituyen por un único gasto puntual
+// en enero. Un número, un concepto, y se acabó el arrastre.
+document.getElementById('btnArrastre2025').onclick = () => {
+  const movs2025 = state.movements.filter(m =>
+    m.date < '2026-01-01' && !m.isCardConsolidation && !m.isInternalTransfer
+  );
+  if (movs2025.length === 0) { toast('No hay movimientos de 2025'); return; }
+
+  const total = movs2025.reduce((s, m) => s + (m.amount < 0 ? Math.abs(m.amount) : -Math.abs(m.amount)), 0);
+  const yaExiste = (state.months.enero.puntuales || []).find(p => p.concept === 'Arrastre 2025');
+
+  const detalle = movs2025
+    .map(m => `  ${fmtDateShort(m.date)}  ${fmt(m.amount)}  ${m.concept}`)
+    .join('\n');
+
+  const msg = `Se van a IGNORAR ${movs2025.length} movimientos de 2025:\n\n${detalle}\n\n`
+    + `Y se ${yaExiste ? 'actualizará' : 'creará'} un gasto puntual en ENERO:\n`
+    + `  "Arrastre 2025" = ${fmt(total)}\n\n`
+    + `A partir de ahí, ningún mes de 2026 los cuenta por separado. ¿Continuar?`;
+  if (!confirm(msg)) return;
+
+  for (const m of movs2025) {
+    if (m.assignedTo) unlinkMovementFromBudget(m);
+    m.assignedTo = null;
+    m.ignored = true;
+  }
+
+  const importe = Math.round(total * 100) / 100;
+  if (yaExiste) {
+    yaExiste.amount = importe;
+  } else {
+    state.months.enero.puntuales.push({
+      id: genId(), concept: 'Arrastre 2025', amount: importe,
+      done: true, source: 'manual', linkedMovIds: []
+    });
+  }
+
+  saveState();
+  updateCuadreBadge();
+  renderAll();
+  renderMovements();
+  toast(`${movs2025.length} movimientos de 2025 ignorados · "Arrastre 2025" = ${fmt(importe)} en enero`);
+};
+
 document.getElementById('btnClearAssign').onclick = () => {
   const asignados = state.movements.filter(m => m.assignedTo || m.ignored).length;
   const reglas = state.rules.length;
@@ -4281,6 +4217,10 @@ async function importMovementFiles(files) {
             totalEnriched++;
           }
         } else {
+          // Los movimientos de 2025 que arrastra el extracto de enero entran ya
+          // ignorados: su gasto se refleja con el puntual "Arrastre 2025", no
+          // movimiento a movimiento. Así ningún mes de 2026 los cuenta.
+          if (m.date < '2026-01-01') m.ignored = true;
           state.movements.push(m);
           byId.set(m.id, m);
           allNewMovs.push(m);
@@ -5458,14 +5398,7 @@ function showAccountModal(id = null) {
       <input type="text" id="accCharge" value="${escapeHTML(acc?.chargeConcept || '')}" placeholder="Ej: TARJ.CRDTO 4921074068731903">
       <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Cuando aparezca este texto en un movimiento de la cuenta, la app lo marcará como "consolidación" para no duplicar.</div>
     </div>
-    <div class="form-group" id="handicapGroup" style="${acc?.type === 'card' ? '' : 'display:none;'}">
-      <label>Ajuste inicial · liquidación anterior a los datos (€)</label>
-      <input type="number" step="0.01" id="accHandicap" value="${acc?.saldoInicial2026 ?? ''}" placeholder="${acc && acc.type === 'card' ? fmtNum(cardOpeningAdjust(acc.id)) : '0'} (automático)">
-      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">
-        Compras anteriores a lo que tienes importado y que ya se pagaron — por ejemplo, el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están en la app.
-        <strong>Déjalo vacío</strong> y se calcula solo con el primer corte que tenga datos. Solo ponlo a mano si sabes el importe exacto y quieres que enero se verifique de verdad.
-      </div>
-    </div>
+    <input type="hidden" id="accHandicap" value="">
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
       <button class="btn btn-primary" data-action="save">Guardar</button>
@@ -5474,7 +5407,6 @@ function showAccountModal(id = null) {
   document.getElementById('accType').onchange = (e) => {
     const isCard = e.target.value === 'card';
     document.getElementById('chargeGroup').style.display = isCard ? 'block' : 'none';
-    document.getElementById('handicapGroup').style.display = isCard ? 'block' : 'none';
   };
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="save"]').onclick = () => {
