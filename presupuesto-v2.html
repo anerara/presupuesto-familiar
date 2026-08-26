@@ -2278,29 +2278,28 @@ function calcMonthEndBalance(monthIdx) {
 function checkCardVerification(cardId, monthIdx) {
   if (!state.movements || monthIdx >= 11) return null;
   const card = state.accounts.find(a => a.id === cardId);
-  // Verificación ACUMULADA desde enero hasta fin del mes actual.
-  // Los arrastres se autocompensan matemáticamente:
-  //   - Compras con fecha X aparecen en 'compras' cuando la fecha entra en el rango
-  //   - El TARJ.CRDTO que las cobra aparece en 'pagos' cuando entra en el rango
-  // Cuando ambos están dentro, la diferencia se anula.
-  const from = `2026-01-01`;
-  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
+  // El TARJ.CRDTO del 01/(X+1) agrupa TODAS las compras con fecha de proceso en el mes X.
+  // Si no tenemos fecha de proceso, caemos a fecha de operación como aproximación.
   const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
   const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
-  // Compras (netas) en esa tarjeta con fecha entre enero y fin del mes actual
+  // Compras (netas) procesadas en el mes en esa tarjeta.
+  // Usamos processDate si existe; si no, fecha de operación.
   let compras = 0;
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
     if (m.isCardConsolidation) continue;
     if (m.isInternalTransfer) continue;
     if (m.ignored) continue;
-    if (m.date < from || m.date > to) continue;
+    const dateRef = m.processDate || m.date;
+    if (dateRef < from || dateRef > to) continue;
     compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
-  // Handicap 2025: siempre entra en la parte de "compras" (deuda arrastrada del año anterior)
-  const handicap = card?.handicap2025 ? Math.abs(card.handicap2025) : 0;
+  // Handicap 2025: se aplica solo en enero. Es deuda de 2025 que Kutxabank cobra en el TARJ.CRDTO del 01/02.
+  const handicap = (monthIdx === 0 && card?.handicap2025) ? Math.abs(card.handicap2025) : 0;
   const comprasConHandicap = compras + handicap;
-  // Traspasos internos hacia esta tarjeta en el rango acumulado
+  // Traspasos internos HACIA esta tarjeta durante el mes (pagos anticipados)
   let traspasos = 0;
   for (const m of state.movements) {
     if (!m.isInternalTransfer) continue;
@@ -2308,16 +2307,16 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     traspasos += Math.abs(m.amount);
   }
-  // TARJ.CRDTO de esta tarjeta con fecha entre 01/02 (mes siguiente al primero) y el 1 del mes siguiente al actual
-  // Ejemplo: si monthIdx = 2 (marzo), incluir consolidados con fecha entre 01/02 y 01/04
+  // TARJ.CRDTO del mes siguiente para esa tarjeta
   const nextMm = String(monthIdx + 2).padStart(2, '0');
-  const consFrom = `2026-02-01`;
-  const consTo = `2026-${nextMm}-01`;
+  const nextFrom = `2026-${nextMm}-01`;
+  const nextDays = new Date(2026, monthIdx + 2, 0).getDate();
+  const nextTo = `2026-${nextMm}-${String(nextDays).padStart(2, '0')}`;
   let consolidado = 0;
   for (const m of state.movements) {
     if (!m.isCardConsolidation) continue;
     if (m.cardId !== cardId) continue;
-    if (m.date < consFrom || m.date > consTo) continue;
+    if (m.date < nextFrom || m.date > nextTo) continue;
     consolidado += Math.abs(m.amount);
   }
   const totalPagado = traspasos + consolidado;
@@ -2325,8 +2324,7 @@ function checkCardVerification(cardId, monthIdx) {
   const cuadrado = Math.abs(diff) < 1;
   return {
     compras, handicap, comprasConHandicap, traspasos, consolidado, totalPagado, diff, cuadrado,
-    hasData: comprasConHandicap > 0 || totalPagado > 0,
-    acumulado: true
+    hasData: comprasConHandicap > 0 || totalPagado > 0
   };
 }
 
@@ -2604,7 +2602,7 @@ function renderCardVerification() {
   if (!rows) { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div class="cv-panel">
-      <div class="cv-title">🔍 Verificación tarjetas — acumulado hasta ${MONTHS[currentMonthIdx]}</div>
+      <div class="cv-title">🔍 Verificación tarjetas — ${MONTHS[currentMonthIdx]}</div>
       ${rows}
     </div>
   `;
@@ -4137,18 +4135,20 @@ async function parseMovementFile(file, accId) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
 
   let headerIdx = -1;
-  let idxFecha = -1, idxConcepto = -1, idxImporte = -1;
+  let idxFecha = -1, idxFechaProc = -1, idxConcepto = -1, idxImporte = -1;
 
   // Buscar cabecera flexible: acepta "fecha" o "fecha de operación", "concepto", "importe"
+  // También "fecha de proceso" o "fecha proceso" opcional (para verificación de tarjetas)
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const row = rows[i].map(c => String(c || '').toLowerCase().trim());
-    // Buscar índices por coincidencia parcial
     const fFecha = row.findIndex(c => c === 'fecha' || c === 'fecha operación' || c === 'fecha de operación' || c === 'fecha operacion' || c === 'fecha de operacion');
+    const fFechaProc = row.findIndex(c => c === 'fecha proceso' || c === 'fecha de proceso' || c === 'fecha valor');
     const fConcepto = row.findIndex(c => c === 'concepto' || c === 'descripción' || c === 'descripcion');
     const fImporte = row.findIndex(c => c === 'importe' || c === 'importe (€)' || c === 'cantidad');
     if (fFecha !== -1 && fConcepto !== -1 && fImporte !== -1) {
       headerIdx = i;
       idxFecha = fFecha;
+      idxFechaProc = fFechaProc; // puede ser -1 si no existe
       idxConcepto = fConcepto;
       idxImporte = fImporte;
       break;
@@ -4157,19 +4157,26 @@ async function parseMovementFile(file, accId) {
   if (headerIdx === -1) throw new Error('No se encuentra cabecera fecha/concepto/importe');
 
   const movs = [];
+  const dedupSeen = new Map();
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length < 3) continue;
     const fechaISO = parseDateSpanish(row[idxFecha]);
     if (!fechaISO) continue;
+    const fechaProcISO = idxFechaProc !== -1 ? parseDateSpanish(row[idxFechaProc]) : null;
     const concept = String(row[idxConcepto] || '').trim().replace(/\s+/g, ' ');
     const amount = parseAmount(row[idxImporte]);
     if (amount === 0 && !concept) continue;
-    const id = movHash(fechaISO, amount, concept, accId);
-    movs.push({
+    const twinKey = `${fechaISO}|${amount.toFixed(2)}|${concept}`;
+    const idx = dedupSeen.get(twinKey) || 0;
+    dedupSeen.set(twinKey, idx + 1);
+    const id = movHash(fechaISO, amount, concept, accId, idx);
+    const mov = {
       id, date: fechaISO, concept, amount, accountId: accId,
       assignedTo: null, ignored: false, isCardConsolidation: false
-    });
+    };
+    if (fechaProcISO) mov.processDate = fechaProcISO;
+    movs.push(mov);
   }
   return movs;
 }
