@@ -1805,8 +1805,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.3.1';
-const APP_BUILD   = '2026-08-26 · reimport enriquece processDate';
+const APP_VERSION = '2.4.0';
+const APP_BUILD   = '2026-08-26 · verificación acumulada por ciclo';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2281,56 +2281,105 @@ function calcMonthEndBalance(monthIdx) {
 }
 
 // Verificación por tarjeta: compara compras del mes en la tarjeta vs TARJ.CRDTO del mes siguiente
-function checkCardVerification(cardId, monthIdx) {
-  if (!state.movements || monthIdx >= 11) return null;
-  const card = state.accounts.find(a => a.id === cardId);
-  // El TARJ.CRDTO del 01/(X+1) agrupa TODAS las compras con fecha de proceso en el mes X.
-  // Si no tenemos fecha de proceso, caemos a fecha de operación como aproximación.
-  const mm = String(monthIdx + 1).padStart(2, '0');
-  const from = `2026-${mm}-01`;
-  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
-  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
-  // Compras (netas) procesadas en el mes en esa tarjeta.
-  // Usamos processDate si existe; si no, fecha de operación.
-  let compras = 0;
+/* ==== V2.4 · VERIFICACIÓN DE TARJETAS: MODELO ACUMULADO ====
+   Kutxabank no factura por mes natural, factura por CICLO: el cargo TARJ.CRDTO del
+   día 1 de un mes liquida TODO lo que tenga fecha de proceso anterior a ese día,
+   venga la compra del mes que venga. Comprobar cada mes por separado con una ventana
+   del 1 al 31 es incorrecto: deja fuera las compras del cierre del mes anterior y
+   obliga a inventar "handicaps" para taparlo.
+
+   El modelo acumulado hace la pregunta correcta:
+     ¿todo lo comprado hasta el corte == todo lo pagado hasta el corte?
+   Si está pagado hasta julio, ene..jul deben dar 0,00. Y como es acumulado, un
+   movimiento que falte en marzo sigue apareciendo en abril, mayo y junio: es
+   imposible que un descuadre se compense solo y quede oculto.                    */
+
+// Fecha de corte del mes: el TARJ.CRDTO que lo liquida. Enero → 2026-02-01.
+function cardCutISO(monthIdx) {
+  const y = monthIdx >= 11 ? 2027 : 2026;
+  const m = monthIdx >= 11 ? 1 : monthIdx + 2;
+  return `${y}-${String(m).padStart(2, '0')}-01`;
+}
+
+// Compras NETAS de una tarjeta con fecha de proceso ANTERIOR al corte.
+// Negativos suman (gasto), positivos restan (devoluciones, condonaciones).
+// Se excluyen consolidaciones y abonos internos: no son gasto.
+function cardPurchasesBefore(cardId, corteISO) {
+  let total = 0;
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
-    if (m.isCardConsolidation) continue;
-    if (m.isInternalTransfer) continue;
-    if (m.ignored) continue;
-    const dateRef = m.processDate || m.date;
-    if (dateRef < from || dateRef > to) continue;
-    compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
+    if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
+    const ref = m.processDate || m.date;
+    if (ref >= corteISO) continue;
+    total += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
-  // Handicap 2025: se aplica solo en enero. Es deuda de 2025 que Kutxabank cobra en el TARJ.CRDTO del 01/02.
-  const handicap = (monthIdx === 0 && card?.handicap2025) ? Math.abs(card.handicap2025) : 0;
-  const comprasConHandicap = compras + handicap;
-  // Traspasos internos HACIA esta tarjeta durante el mes (pagos anticipados)
-  let traspasos = 0;
+  return total;
+}
+
+// Pagos hechos a una tarjeta hasta el corte INCLUIDO, vistos desde la cuenta
+// corriente: cargos TARJ.CRDTO + traspasos anticipados.
+function cardPaymentsUpTo(cardId, corteISO) {
+  let consolidado = 0, traspasos = 0;
   for (const m of state.movements) {
-    if (!m.isInternalTransfer) continue;
-    if (m.transferToCardId !== cardId) continue;
-    if (m.date < from || m.date > to) continue;
-    traspasos += Math.abs(m.amount);
+    if (m.date > corteISO) continue;
+    if (m.isCardConsolidation && m.cardId === cardId) consolidado += Math.abs(m.amount);
+    else if (m.isInternalTransfer && m.transferToCardId === cardId) traspasos += Math.abs(m.amount);
   }
-  // TARJ.CRDTO del mes siguiente para esa tarjeta
-  const nextMm = String(monthIdx + 2).padStart(2, '0');
-  const nextFrom = `2026-${nextMm}-01`;
-  const nextDays = new Date(2026, monthIdx + 2, 0).getDate();
-  const nextTo = `2026-${nextMm}-${String(nextDays).padStart(2, '0')}`;
-  let consolidado = 0;
-  for (const m of state.movements) {
-    if (!m.isCardConsolidation) continue;
-    if (m.cardId !== cardId) continue;
-    if (m.date < nextFrom || m.date > nextTo) continue;
-    consolidado += Math.abs(m.amount);
+  return { consolidado, traspasos, total: consolidado + traspasos };
+}
+
+// Ajuste inicial: compras anteriores a los datos importados que ya se pagaron.
+// Ejemplo real: el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están
+// en la app. Sin este ajuste, todos los meses saldrían descuadrados por ese importe.
+// Se autocalibra en el primer corte con datos; se puede fijar a mano en la cuenta.
+function cardOpeningAdjust(cardId) {
+  const card = state.accounts.find(a => a.id === cardId);
+  const manual = card?.saldoInicial2026;
+  if (manual !== undefined && manual !== null && manual !== '') return Number(manual) || 0;
+  for (let i = 0; i <= 11; i++) {
+    const corte = cardCutISO(i);
+    const pagos = cardPaymentsUpTo(cardId, corte);
+    const compras = cardPurchasesBefore(cardId, corte);
+    if (pagos.total > 0.005 || Math.abs(compras) > 0.005) {
+      return Math.round((pagos.total - compras) * 100) / 100;
+    }
   }
-  const totalPagado = traspasos + consolidado;
-  const diff = comprasConHandicap - totalPagado;
+  return 0;
+}
+
+// Primer mes con datos: es el que sirve de calibración, así que su 0,00 no
+// demuestra nada por sí solo. Lo marcamos para no dar una falsa sensación de OK.
+function cardFirstDataMonth(cardId) {
+  for (let i = 0; i <= 11; i++) {
+    const corte = cardCutISO(i);
+    const pagos = cardPaymentsUpTo(cardId, corte);
+    if (pagos.total > 0.005 || Math.abs(cardPurchasesBefore(cardId, corte)) > 0.005) return i;
+  }
+  return -1;
+}
+
+function checkCardVerification(cardId, monthIdx) {
+  if (!state.movements) return null;
+  const corte = cardCutISO(monthIdx);
+
+  const compras = cardPurchasesBefore(cardId, corte);
+  const pagos = cardPaymentsUpTo(cardId, corte);
+  const ajuste = cardOpeningAdjust(cardId);
+  const primerMes = cardFirstDataMonth(cardId);
+
+  const diff = (compras + ajuste) - pagos.total;
   const cuadrado = Math.abs(diff) < 1;
+
   return {
-    compras, handicap, comprasConHandicap, traspasos, consolidado, totalPagado, diff, cuadrado,
-    hasData: comprasConHandicap > 0 || totalPagado > 0
+    corte,
+    compras,                    // acumulado de compras netas con proceso < corte
+    ajuste,                     // liquidación anterior a los datos importados
+    traspasos: pagos.traspasos, // acumulado de pagos anticipados
+    consolidado: pagos.consolidado, // acumulado de TARJ.CRDTO
+    totalPagado: pagos.total,
+    diff, cuadrado,
+    esMesDeCalibracion: monthIdx === primerMes && Math.abs(ajuste) > 0.005,
+    hasData: primerMes !== -1 && monthIdx >= primerMes && (Math.abs(compras) > 0.005 || pagos.total > 0.005)
   };
 }
 
@@ -2500,6 +2549,11 @@ function fmt(n) {
   return '€' + v.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
+// Igual que fmt pero sin el símbolo: para placeholders de inputs numéricos.
+function fmtNum(n) {
+  return (Math.round(Number(n || 0) * 100) / 100).toFixed(2);
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
@@ -2587,29 +2641,35 @@ function renderCardVerification() {
     const icon = chk.cuadrado ? '<span style="color:var(--income);">✓</span>' : '<span style="color:var(--warning);">⚠️</span>';
     const badgeColor = chk.cuadrado ? 'var(--income)' : 'var(--warning)';
     const diffText = chk.cuadrado
-      ? 'cuadrado'
-      : `diferencia: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
-    const traspasosLabel = chk.traspasos > 0
-      ? `<span title="Traspasos anticipados hacia esta tarjeta en el mes">Pagos anticipados: <strong>${fmt(chk.traspasos)}</strong></span>`
-      : '';
+      ? (chk.esMesDeCalibracion ? 'calibración' : 'cuadrado')
+      : `descuadre: ${chk.diff > 0 ? '+' : ''}${fmt(chk.diff)}`;
+    const cortePretty = chk.corte.split('-').reverse().join('/');
     return `
       <div class="cv-row">
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
-          <span title="Suma neta de compras de esta tarjeta con fecha en el mes actual">Compras: <strong>${fmt(chk.compras)}</strong></span>
-          ${chk.handicap > 0 ? `<span title="Deuda arrastrada de 2025 que Kutxabank cobra en el TARJ.CRDTO del 01/02" style="color:var(--info);">Handicap 2025: <strong>+${fmt(chk.handicap)}</strong></span>` : ''}
-          ${traspasosLabel}
-          <span title="Cargo TARJ.CRDTO del mes siguiente para esta tarjeta">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
+          <span title="Todo lo comprado en esta tarjeta con fecha de proceso anterior al ${cortePretty}, neto de devoluciones">Comprado hasta ${cortePretty}: <strong>${fmt(chk.compras)}</strong></span>
+          ${Math.abs(chk.ajuste) > 0.005 ? `<span title="Compras anteriores a los datos importados que ya se pagaron (p.ej. el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están en la app)" style="color:var(--info);">Ajuste inicial: <strong>${fmt(chk.ajuste)}</strong></span>` : ''}
+          <span title="Traspasos anticipados acumulados hacia esta tarjeta">Anticipos: <strong>${fmt(chk.traspasos)}</strong></span>
+          <span title="Suma de todos los cargos TARJ.CRDTO hasta el ${cortePretty} incluido">TARJ.CRDTO: <strong>${fmt(chk.consolidado)}</strong></span>
           <span style="color:${badgeColor};">${diffText}</span>
         </div>
       </div>
     `;
   }).filter(Boolean).join('');
   if (!rows) { el.innerHTML = ''; return; }
+  const algunaCalibracion = cards.some(c => {
+    const k = checkCardVerification(c.id, currentMonthIdx);
+    return k && k.hasData && k.esMesDeCalibracion;
+  });
   el.innerHTML = `
     <div class="cv-panel">
-      <div class="cv-title">🔍 Verificación tarjetas — ${MONTHS[currentMonthIdx]}</div>
+      <div class="cv-title">🔍 Verificación tarjetas — acumulado hasta el corte de ${MONTHS[currentMonthIdx]}</div>
       ${rows}
+      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:8px; line-height:1.45;">
+        Compara <em>todo</em> lo comprado (por fecha de proceso) contra <em>todo</em> lo pagado hasta el cargo del día 1 siguiente.
+        ${algunaCalibracion ? '<br><strong style="color:var(--info);">Calibración:</strong> este es el primer mes con datos, así que su cuadre es por construcción — el ajuste inicial absorbe lo comprado antes de lo importado. La verificación real empieza el mes siguiente.' : ''}
+      </div>
     </div>
   `;
 }
@@ -5321,9 +5381,12 @@ function showAccountModal(id = null) {
       <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Cuando aparezca este texto en un movimiento de la cuenta, la app lo marcará como "consolidación" para no duplicar.</div>
     </div>
     <div class="form-group" id="handicapGroup" style="${acc?.type === 'card' ? '' : 'display:none;'}">
-      <label>Handicap arrastrado de 2025 (€)</label>
-      <input type="number" step="0.01" id="accHandicap" value="${acc?.handicap2025 ?? 0}" placeholder="0">
-      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Suma de compras hechas en 2025 con esta tarjeta pero que se cobraron en 2026. Se añadirá a las 'Compras' de enero para que cuadre con el TARJ.CRDTO real. Deja 0 si no aplica.</div>
+      <label>Ajuste inicial · liquidación anterior a los datos (€)</label>
+      <input type="number" step="0.01" id="accHandicap" value="${acc?.saldoInicial2026 ?? ''}" placeholder="${acc && acc.type === 'card' ? fmtNum(cardOpeningAdjust(acc.id)) : '0'} (automático)">
+      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">
+        Compras anteriores a lo que tienes importado y que ya se pagaron — por ejemplo, el TARJ.CRDTO del 01/01/2026 liquidó compras de 2025 que no están en la app.
+        <strong>Déjalo vacío</strong> y se calcula solo con el primer corte que tenga datos. Solo ponlo a mano si sabes el importe exacto y quieres que enero se verifique de verdad.
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
@@ -5340,12 +5403,15 @@ function showAccountModal(id = null) {
     const name = document.getElementById('accName').value.trim();
     const type = document.getElementById('accType').value;
     const charge = document.getElementById('accCharge').value.trim();
-    const handicap = type === 'card' ? (parseFloat(document.getElementById('accHandicap').value) || 0) : 0;
+    // Vacío = automático (null). Un número = fijado a mano.
+    const rawAjuste = document.getElementById('accHandicap').value.trim();
+    const ajuste = (type === 'card' && rawAjuste !== '') ? (parseFloat(rawAjuste) || 0) : null;
     if (!name) { toast('Nombre requerido', true); return; }
     if (isNew) {
-      state.accounts.push({ id: genId(), name, type, chargeConcept: charge, handicap2025: handicap });
+      state.accounts.push({ id: genId(), name, type, chargeConcept: charge, saldoInicial2026: ajuste });
     } else {
-      Object.assign(acc, { name, type, chargeConcept: charge, handicap2025: handicap });
+      Object.assign(acc, { name, type, chargeConcept: charge, saldoInicial2026: ajuste });
+      delete acc.handicap2025; // obsoleto: lo sustituye el modelo acumulado
     }
     saveState();
     closeModal();
