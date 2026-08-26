@@ -1805,8 +1805,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.3.0';
-const APP_BUILD   = '2026-08-26 · processDate robusto';
+const APP_VERSION = '2.3.1';
+const APP_BUILD   = '2026-08-26 · reimport enriquece processDate';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4133,17 +4133,30 @@ async function importMovementFiles(files) {
   let allNewMovs = [];
   let totalImported = 0;
   let totalDuplicates = 0;
+  let totalEnriched = 0;
   const parseInfos = [];
+
+  // Índice por id: evita recorrer los ~1000 movimientos por cada fila del XLS.
+  const byId = new Map(state.movements.map(m => [m.id, m]));
 
   for (const file of files) {
     try {
       const { movs, info } = await parseMovementFile(file, accId);
       parseInfos.push(info);
       for (const m of movs) {
-        const exists = state.movements.some(x => x.id === m.id);
-        if (exists) totalDuplicates++;
-        else {
+        const existing = byId.get(m.id);
+        if (existing) {
+          totalDuplicates++;
+          // ENRIQUECER en vez de descartar. Si el movimiento ya guardado no tiene
+          // fecha de proceso y el extracto sí la trae, se la rellenamos. No tocamos
+          // nada más: asignaciones, ignorados y marcas se conservan intactas.
+          if (m.processDate && !existing.processDate) {
+            existing.processDate = m.processDate;
+            totalEnriched++;
+          }
+        } else {
           state.movements.push(m);
+          byId.set(m.id, m);
           allNewMovs.push(m);
           totalImported++;
         }
@@ -4167,6 +4180,7 @@ async function importMovementFiles(files) {
     accountId: accId,
     total: totalImported,
     duplicates: totalDuplicates,
+    enriched: totalEnriched,
     autoAssigned: autoAssigned,
     movementIds: allNewMovs.map(m => m.id)
   };
@@ -4180,9 +4194,14 @@ async function importMovementFiles(files) {
   // AQUÍ, no tres semanas después cuadrando enero a mano.
   const nuevosConProc = allNewMovs.filter(m => m.processDate).length;
   const sinColumna = parseInfos.filter(i => !i.hasProcCol);
+  const totalConProc = state.movements.filter(m => m.processDate).length;
 
-  let msg = `${totalImported} importados · ${nuevosConProc} con fecha de proceso · ${totalDuplicates} duplicados · ${autoAssigned} auto-asignados`;
+  let msg = `${totalImported} importados · ${nuevosConProc} con fecha de proceso`;
+  if (totalEnriched) msg += ` · ${totalEnriched} enriquecidos`;
+  msg += ` · ${totalDuplicates} duplicados · ${autoAssigned} auto-asignados`;
   toast(msg, totalImported > 0 && nuevosConProc === 0);
+
+  console.info(`[import] Total en la base: ${state.movements.length} movs · ${totalConProc} con fecha de proceso`);
 
   if (sinColumna.length) {
     console.warn('[import] Ficheros sin columna de fecha de proceso:',
@@ -5143,8 +5162,13 @@ function renderCuadre() {
       <div style="font-weight:600;">${dateStr}</div>
       <div style="margin-top:8px; font-size:0.88rem;">
         Importados: <strong>${lastImp.total}</strong> ·
-        Duplicados (ignorados): <strong>${lastImp.duplicates}</strong> ·
+        Duplicados: <strong>${lastImp.duplicates}</strong> ·
         Auto-asignados por reglas: <strong style="color:var(--income);">${lastImp.autoAssigned}</strong>
+        ${lastImp.enriched ? ` · Fecha de proceso añadida a <strong style="color:var(--info);">${lastImp.enriched}</strong> ya existentes` : ''}
+      </div>
+      <div style="margin-top:6px; font-size:0.82rem; color:var(--text-dim);">
+        Base completa: <strong>${state.movements.length}</strong> movimientos ·
+        <strong style="color:${state.movements.filter(m => m.processDate).length ? 'var(--income)' : 'var(--warning)'};">${state.movements.filter(m => m.processDate).length}</strong> con fecha de proceso
       </div>
     </div>
 
