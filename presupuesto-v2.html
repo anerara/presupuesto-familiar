@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.9.5';
-const APP_BUILD   = '2026-08-27 · anticipos: solo abonos reales';
+const APP_VERSION = '2.9.7';
+const APP_BUILD   = '2026-08-27 · tarjeta sustituida';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2325,10 +2325,22 @@ function checkCardVerification(cardId, monthIdx) {
   const from = `2026-${mm}-01`;
   const to = `2026-${mm}-${String(new Date(2026, monthIdx + 1, 0).getDate()).padStart(2, '0')}`;
 
-  // Meses en los que esta tarjeta tiene un cargo TARJ.CRDTO ya registrado.
+  // Una tarjeta dada de baja se liquida a través de su SUSTITUTA: Kutxabank arrastra
+  // el saldo que quedaba vivo al cargo de la tarjeta nueva, y la vieja deja de tener
+  // cargos propios. Sin esto, el último mes de una tarjeta sustituida jamás se saldaría.
+  const idsCargo = [cardId];
+  const vistos = new Set([cardId]);
+  let cur = state.accounts.find(a => a.id === cardId);
+  while (cur && cur.replacedByCardId && !vistos.has(cur.replacedByCardId)) {
+    idsCargo.push(cur.replacedByCardId);
+    vistos.add(cur.replacedByCardId);
+    cur = state.accounts.find(a => a.id === cur.replacedByCardId);
+  }
+
+  // Meses en los que esta tarjeta (o su sustituta) tiene un cargo TARJ.CRDTO registrado.
   const mesesConCargo = new Set();
   for (const m of state.movements) {
-    if (m.isCardConsolidation && m.cardId === cardId) mesesConCargo.add(m.date.slice(0, 7));
+    if (m.isCardConsolidation && idsCargo.includes(m.cardId)) mesesConCargo.add(m.date.slice(0, 7));
   }
 
   let compras = 0, cobrado = 0, pendiente = 0;
@@ -2395,6 +2407,8 @@ function checkCardVerification(cardId, monthIdx) {
     compras, cobrado, pendiente, anticipos,
     saldado: Math.abs(pendiente) < 0.01,
     cargos, sinCiclo,
+    mesLimite,                                   // el cargo que cierra el mes
+    hayCargosDeEstaTarjeta: mesesConCargo.size > 0,
     hasData: Math.abs(compras) > 0.005
   };
 }
@@ -2670,6 +2684,12 @@ function renderCardVerification() {
                <span style="color:var(--warning);">pendiente de cobro: <strong>${fmt(chk.pendiente)}</strong></span>`}
         </div>
       </div>
+      ${!chk.saldado ? `
+      <div style="font-size:0.76rem; color:var(--warning); padding:0 0 8px 18px; line-height:1.5;">
+        ${chk.hayCargosDeEstaTarjeta
+          ? `Falta el cargo TARJ.CRDTO del <strong>01/${chk.mesLimite.slice(5)}/${chk.mesLimite.slice(0,4)}</strong> de esta tarjeta. Hasta que ese cargo esté importado, ${nombreMes} no se puede dar por saldado.`
+          : `<strong>Esta tarjeta no tiene ningún cargo TARJ.CRDTO enlazado.</strong> Pulsa el importe de arriba para ver cómo arreglarlo.`}
+      </div>` : ''}
       ${chk.sinCiclo.n ? `
       <div style="font-size:0.76rem; color:var(--warning); padding:0 0 8px 18px; line-height:1.5;">
         \u26a0\ufe0f <strong>${chk.sinCiclo.n}</strong> ${chk.sinCiclo.n === 1 ? 'movimiento' : 'movimientos'}
@@ -2690,6 +2710,38 @@ function renderCardVerification() {
   el.querySelectorAll('.cv-gasto').forEach(n => {
     n.onclick = () => showCardMonthDetail(n.dataset.card, currentMonthIdx);
   });
+}
+
+// Los cargos TARJ.CRDTO que la app ha sabido enlazar con esta tarjeta. Si esta lista
+// sale vac\u00eda, ning\u00fan mes podr\u00e1 darse por saldado nunca \u2014 y el motivo casi siempre es
+// que el "concepto del cargo" configurado no coincide con el del extracto de la cuenta.
+function renderCargosDetectados(cardId) {
+  const card = state.accounts.find(a => a.id === cardId);
+  const cargos = state.movements
+    .filter(m => m.isCardConsolidation && m.cardId === cardId)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!cargos.length) {
+    return `
+      <div style="margin-top:14px; padding:10px 12px; background:rgba(248,113,113,0.1); border-left:3px solid var(--expense); border-radius:var(--radius-sm); font-size:0.8rem; line-height:1.55;">
+        <strong style="color:var(--expense);">La app no encuentra ning\u00fan cargo TARJ.CRDTO de esta tarjeta.</strong><br>
+        Sin cargos no puede dar ning\u00fan mes por saldado. Busca en el extracto de la cuenta corriente
+        la l\u00ednea que la cobra y copia su texto exacto en Reglas \u2192 esta cuenta \u2192 "Concepto del cargo".<br>
+        Ahora mismo tienes configurado:
+        <code style="background:var(--bg-input); padding:1px 5px; border-radius:3px;">${escapeHTML(card?.chargeConcept || '(vac\u00edo)')}</code><br>
+        Despu\u00e9s pulsa <strong>\ud83d\udd04 Re-detectar cargos y traspasos</strong> en Movimientos.
+      </div>`;
+  }
+
+  return `
+    <div style="margin-top:14px;">
+      <div style="font-size:0.74rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">
+        Cargos TARJ.CRDTO enlazados con esta tarjeta (${cargos.length})
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:5px;">
+        ${cargos.map(c => `<span style="background:var(--bg-input); border-radius:4px; padding:2px 7px; font-size:0.76rem; font-variant-numeric:tabular-nums;">${c.date.split('-').reverse().join('/')} \u00b7 ${fmt(Math.abs(c.amount))}</span>`).join('')}
+      </div>
+    </div>`;
 }
 
 // Cada cifra del panel se puede abrir. Ninguna cifra deber\u00eda ser un acto de fe:
@@ -2748,6 +2800,7 @@ function showCardMonthDetail(cardId, monthIdx) {
       <span>Total</span>
       <span style="font-variant-numeric:tabular-nums;">${fmt(total)}</span>
     </div>
+    ${renderCargosDetectados(cardId)}
     <div class="modal-actions">
       <button class="btn btn-primary" data-action="cancel">Cerrar</button>
     </div>
@@ -5698,6 +5751,19 @@ function showAccountModal(id = null) {
       <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">Cuando aparezca este texto en un movimiento de la cuenta, la app lo marcará como "consolidación" para no duplicar.</div>
     </div>
     <input type="hidden" id="accHandicap" value="">
+    <div class="form-group" id="replacedGroup" style="${acc?.type === 'card' ? '' : 'display:none;'}">
+      <label>Sustituida por (si diste de baja esta tarjeta)</label>
+      <select id="accReplacedBy">
+        <option value="">— sigue activa —</option>
+        ${state.accounts.filter(a => a.type === 'card' && a.id !== acc?.id)
+          .map(a => `<option value="${a.id}" ${acc?.replacedByCardId === a.id ? 'selected' : ''}>${escapeHTML(a.name)}</option>`).join('')}
+      </select>
+      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">
+        Al dar de baja una tarjeta, Kutxabank arrastra lo que quedaba vivo al cargo de la nueva y
+        la vieja deja de tener cargos propios. Indicando aquí la sustituta, sus últimos meses
+        pueden darse por saldados con el cargo de la que la reemplazó.
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
       <button class="btn btn-primary" data-action="save">Guardar</button>
@@ -5706,6 +5772,8 @@ function showAccountModal(id = null) {
   document.getElementById('accType').onchange = (e) => {
     const isCard = e.target.value === 'card';
     document.getElementById('chargeGroup').style.display = isCard ? 'block' : 'none';
+    const rg = document.getElementById('replacedGroup');
+    if (rg) rg.style.display = isCard ? 'block' : 'none';
   };
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="save"]').onclick = () => {
@@ -5715,11 +5783,12 @@ function showAccountModal(id = null) {
     // Vacío = automático (null). Un número = fijado a mano.
     const rawAjuste = document.getElementById('accHandicap').value.trim();
     const ajuste = (type === 'card' && rawAjuste !== '') ? (parseFloat(rawAjuste) || 0) : null;
+    const replacedBy = type === 'card' ? (document.getElementById('accReplacedBy')?.value || null) : null;
     if (!name) { toast('Nombre requerido', true); return; }
     if (isNew) {
-      state.accounts.push({ id: genId(), name, type, chargeConcept: charge, saldoInicial2026: ajuste });
+      state.accounts.push({ id: genId(), name, type, chargeConcept: charge, saldoInicial2026: ajuste, replacedByCardId: replacedBy });
     } else {
-      Object.assign(acc, { name, type, chargeConcept: charge, saldoInicial2026: ajuste });
+      Object.assign(acc, { name, type, chargeConcept: charge, saldoInicial2026: ajuste, replacedByCardId: replacedBy });
       delete acc.handicap2025; // obsoleto: lo sustituye el modelo acumulado
     }
     saveState();
