@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.9.7';
-const APP_BUILD   = '2026-08-27 · tarjeta sustituida';
+const APP_VERSION = '2.9.8';
+const APP_BUILD   = '2026-08-27 · recoloca movimientos mal asignados';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4400,6 +4400,40 @@ async function importMovementFiles(files) {
   // Índice por id: evita recorrer los ~1000 movimientos por cada fila del XLS.
   const byId = new Map(state.movements.map(m => [m.id, m]));
 
+  // Segundo índice, por identidad lógica (fecha + importe + concepto), solo de
+  // movimientos que están en una TARJETA. Sirve para detectar un movimiento que en su
+  // día entró en la tarjeta equivocada: es el mismo gasto, archivado donde no toca.
+  // Sin esto, reimportar lo enriquece pero jamás lo mueve, y el error es permanente.
+  const claveLogica = m => `${m.date}|${m.amount.toFixed(2)}|${(m.concept || '').trim()}`;
+  const esTarjetaId = id => state.accounts.find(a => a.id === id)?.type === 'card';
+  const byClave = new Map();
+  for (const m of state.movements) {
+    if (!esTarjetaId(m.accountId)) continue;
+    const k = claveLogica(m);
+    if (!byClave.has(k)) byClave.set(k, []);
+    byClave.get(k).push(m);
+  }
+
+  // Al cambiar de tarjeta cambia el id (lo lleva dentro del hash), así que hay que
+  // reapuntar los enlaces con el presupuesto o el ítem se quedaría huérfano.
+  const remapMovId = (viejo, nuevo) => {
+    const fix = it => {
+      if (!it || !Array.isArray(it.linkedMovIds)) return;
+      const i = it.linkedMovIds.indexOf(viejo);
+      if (i !== -1) it.linkedMovIds[i] = nuevo;
+    };
+    for (const mk of MONTHS) {
+      const mo = state.months?.[mk];
+      if (!mo) continue;
+      (mo.fixed || []).forEach(fix);
+      (mo.puntuales || []).forEach(fix);
+      (mo.incomePuntuales || []).forEach(fix);
+      fix(mo.nominaAner); fix(mo.nominaIratxe);
+      (mo.weeks || []).forEach(w => (w.expenses || []).forEach(fix));
+    }
+  };
+  let totalMovidos = 0;
+
   for (const file of files) {
     try {
       const { movs, info } = await parseMovementFile(file, accId);
@@ -4421,15 +4455,43 @@ async function importMovementFiles(files) {
             tocado = true;
           }
           if (tocado) totalEnriched++;
+
+          // Si además quedó una copia del mismo gasto en otra tarjeta (por una
+          // importación anterior con la cuenta equivocada), se elimina: es un
+          // duplicado que estaría inflando el gasto de esa otra tarjeta.
+          const copias = (byClave.get(claveLogica(m)) || [])
+            .filter(x => x !== existing && x.accountId !== m.accountId && !x.assignedTo);
+          for (const c of copias) {
+            const i = state.movements.indexOf(c);
+            if (i !== -1) { state.movements.splice(i, 1); byId.delete(c.id); totalMovidos++; }
+          }
         } else {
-          // Los movimientos de 2025 que arrastra el extracto de enero entran ya
-          // ignorados: su gasto se refleja con el puntual "Arrastre 2025", no
-          // movimiento a movimiento. Así ningún mes de 2026 los cuenta.
-          if (m.date < '2026-01-01') m.ignored = true;
-          state.movements.push(m);
-          byId.set(m.id, m);
-          allNewMovs.push(m);
-          totalImported++;
+          // ¿Existe este mismo gasto pero archivado en OTRA tarjeta? Entonces no es
+          // nuevo: es un movimiento mal asignado. Se mueve, no se duplica.
+          const candidatos = (byClave.get(claveLogica(m)) || [])
+            .filter(x => x.accountId !== m.accountId && !byId.has(m.id));
+          const malAsignado = candidatos[0];
+
+          if (malAsignado) {
+            const idViejo = malAsignado.id;
+            byId.delete(idViejo);
+            malAsignado.accountId = m.accountId;
+            malAsignado.id = m.id;
+            if (m.processDate) malAsignado.processDate = m.processDate;
+            if (m.cycleMonth) { malAsignado.cycleMonth = m.cycleMonth; malAsignado.chargeDate = m.chargeDate; }
+            byId.set(m.id, malAsignado);
+            remapMovId(idViejo, m.id);
+            totalMovidos++;
+          } else {
+            // Los movimientos de 2025 que arrastra el extracto de enero entran ya
+            // ignorados: su gasto se refleja con el puntual "Arrastre 2025", no
+            // movimiento a movimiento. Así ningún mes de 2026 los cuenta.
+            if (m.date < '2026-01-01') m.ignored = true;
+            state.movements.push(m);
+            byId.set(m.id, m);
+            allNewMovs.push(m);
+            totalImported++;
+          }
         }
       }
     } catch (err) {
@@ -4481,6 +4543,7 @@ async function importMovementFiles(files) {
 
   let msg = `${totalImported} importados · ${nuevosConProc} con fecha de proceso`;
   if (totalEnriched) msg += ` · ${totalEnriched} enriquecidos`;
+  if (totalMovidos) msg += ` · ${totalMovidos} recolocados en su tarjeta`;
   msg += ` · ${totalDuplicates} duplicados · ${autoAssigned} auto-asignados`;
   toast(msg, totalImported > 0 && nuevosConProc === 0);
 
