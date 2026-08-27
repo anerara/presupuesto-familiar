@@ -1808,8 +1808,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.6.0';
-const APP_BUILD   = '2026-08-26 · reparto automático por número de tarjeta';
+const APP_VERSION = '2.8.0';
+const APP_BUILD   = '2026-08-26 · el mes lo manda el nombre del archivo';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2307,6 +2307,10 @@ function calcMonthEndBalance(monthIdx) {
 // Mes del cargo TARJ.CRDTO que liquida una compra: el siguiente al de su fecha de
 // proceso. Compra procesada el 08/01 → la cobran el 01/02. Procesada el 01/02 → 01/03.
 function chargeMonthFor(mov) {
+  // Si sabemos de qué extracto salió, esa es la verdad: el ciclo lo dice el fichero,
+  // no la fecha de la compra. Una compra del 28/02 que aparece en el extracto de
+  // marzo se cobra el 01/04, y ninguna aritmética sobre su fecha lo adivinaría.
+  if (mov.chargeDate) return mov.chargeDate.slice(0, 7);
   const ref = mov.processDate || mov.date;
   const d = new Date(ref + 'T00:00:00');
   const y = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
@@ -2337,7 +2341,7 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     const val = Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
     compras += val;
-    if (!m.processDate) sinProceso++;
+    if (!m.chargeDate) sinProceso++;   // no sabemos de qué extracto salió
     const mesCargo = chargeMonthFor(m);
     porCargo.set(mesCargo, (porCargo.get(mesCargo) || 0) + val);
   }
@@ -4193,16 +4197,32 @@ function showImportModal() {
   openModal(`
     <h2>📥 Importar movimientos</h2>
     <div class="form-group">
-      <label>Cuenta por defecto (solo si el archivo no dice de qué tarjeta es)</label>
+      <label>¿A qué cuenta o tarjeta pertenece?</label>
       <select id="importAccountSel">${optsHtml}</select>
     </div>
-    <p style="font-size:0.82rem; color:var(--text-dim); margin-bottom:14px;">
-      <strong style="color:var(--accent);">Suelta aquí todos los extractos de tarjeta a la vez.</strong>
-      Los extractos de tarjeta traen una columna con el número, así que la app reparte cada
-      movimiento en su tarjeta sola — no hace falta ir de uno en uno.
-      <br><br>
-      Reimportar es seguro: no duplica ni pierde asignaciones. A los movimientos que ya tengas
-      les rellena la <strong>fecha de proceso</strong> que faltara.
+    <div style="background:var(--bg-elevated); border-left:3px solid var(--accent); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:14px; font-size:0.82rem; line-height:1.55;">
+      <strong style="color:var(--accent);">Nombra el archivo con su mes.</strong>
+      <code style="background:var(--bg-input); padding:1px 5px; border-radius:3px;">marzo.xls</code>,
+      <code style="background:var(--bg-input); padding:1px 5px; border-radius:3px;">marzo_aner.xls</code>,
+      <code style="background:var(--bg-input); padding:1px 5px; border-radius:3px;">03.xls</code> — todos valen.
+      <br>
+      El extracto de marzo contiene compras de finales de febrero y <em>todo</em> se cobra el 01/04.
+      Por el nombre la app lo sitúa sin equivocarse. Si no lo pones, lo intenta deducir de la fila
+      PAGO RECIBO, y te avisa en el informe de que no vino del nombre.
+    </div>
+    <div class="form-group">
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text);">
+        <input type="checkbox" id="importAutoCard" checked style="width:auto; margin:0;">
+        Repartir por el número de tarjeta que trae el archivo
+      </label>
+      <div style="font-size:0.72rem; color:var(--text-faint); margin-top:4px;">
+        Recomendado. Un mismo extracto puede llevar dos tarjetas (el de Iratxe de marzo lleva la
+        vieja y la nueva). Desmárcalo para forzar que todo vaya a la cuenta elegida arriba.
+      </div>
+    </div>
+    <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:14px;">
+      Puedes seleccionar varios archivos a la vez. Reimportar es seguro: no duplica ni pierde
+      asignaciones, solo rellena lo que falte.
     </p>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
@@ -4212,6 +4232,7 @@ function showImportModal() {
   document.querySelector('[data-action="cancel"]').onclick = closeModal;
   document.querySelector('[data-action="pick"]').onclick = () => {
     const accId = document.getElementById('importAccountSel').value;
+    window.__pendingImportAutoCard = document.getElementById('importAutoCard').checked;
     closeModal();
     window.__pendingImportAccount = accId;
     document.getElementById('movFileInput').click();
@@ -4244,10 +4265,16 @@ async function importMovementFiles(files) {
           // ENRIQUECER en vez de descartar. Si el movimiento ya guardado no tiene
           // fecha de proceso y el extracto sí la trae, se la rellenamos. No tocamos
           // nada más: asignaciones, ignorados y marcas se conservan intactas.
-          if (m.processDate && !existing.processDate) {
-            existing.processDate = m.processDate;
-            totalEnriched++;
+          let tocado = false;
+          if (m.processDate && !existing.processDate) { existing.processDate = m.processDate; tocado = true; }
+          // El ciclo también se rellena al reimportar: es lo que sitúa el movimiento
+          // en su extracto y, por tanto, en el cargo que lo liquida.
+          if (m.cycleMonth && existing.cycleMonth !== m.cycleMonth) {
+            existing.cycleMonth = m.cycleMonth;
+            existing.chargeDate = m.chargeDate;
+            tocado = true;
           }
+          if (tocado) totalEnriched++;
         } else {
           // Los movimientos de 2025 que arrastra el extracto de enero entran ya
           // ignorados: su gasto se refleja con el puntual "Arrastre 2025", no
@@ -4280,7 +4307,19 @@ async function importMovementFiles(files) {
     duplicates: totalDuplicates,
     enriched: totalEnriched,
     autoAssigned: autoAssigned,
-    movementIds: allNewMovs.map(m => m.id)
+    movementIds: allNewMovs.map(m => m.id),
+    // Informe por fichero: qué leyó la app de cada uno. En pantalla, no en consola.
+    files: parseInfos.map(i => ({
+      file: i.file,
+      header: (i.header || []).map(c => String(c == null ? '' : c)),
+      hasProcCol: i.hasProcCol,
+      parsed: i.parsed,
+      withProcessDate: i.withProcessDate,
+      cicloMes: i.cicloMes || null,
+      cargoISO: i.cargoISO || null,
+      cicloOrigen: i.cicloOrigen || null,
+      autoTarjeta: i.autoTarjeta || []
+    }))
   };
 
   saveState();
@@ -4339,6 +4378,7 @@ async function parseMovementFile(file, accId) {
     .filter(Boolean);
 
   const resolverTarjeta = (valor) => {
+    if (window.__pendingImportAutoCard === false) return null;  // el usuario lo desmarcó
     const d = String(valor == null ? '' : valor).replace(/\D/g, '');
     if (d.length < 6) return null;
     const hit = tarjetasConocidas.filter(t => t.digits.endsWith(d) || d.endsWith(t.digits));
@@ -4384,6 +4424,70 @@ async function parseMovementFile(file, accId) {
     console.warn(`[import] ${file.name}: este extracto NO trae columna de fecha de proceso.`, headerRaw);
   }
 
+  /* ---- Situar el extracto en el tiempo ------------------------------------
+     Un fichero NO es "un montón de líneas": es UN CICLO DE FACTURACIÓN. Y a qué
+     ciclo pertenece una compra no se puede deducir de su fecha:
+       · marzo.xls   trae el Netflix del 28/02 → se cobra el 01/04, no el 01/03
+       · agostoA.xls trae compras del 30/07    → se cobran el 01/09, no el 01/08
+     El ciclo lo marca la fila PAGO RECIBO (el cobro del ciclo anterior, que abre
+     éste). Si el fichero no la trae, usamos el mes de la última compra.
+     Todo lo que hay en el fichero se liquida el día 1 del mes SIGUIENTE al ciclo. */
+
+  // Todas las fechas de operación del fichero: sirven para deducir el año.
+  const fechasOp = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 3) continue;
+    const d = parseDateSpanish(row[idxFecha]);
+    if (d) fechasOp.push(d);
+  }
+  fechasOp.sort();
+
+  let cicloMes = null, cicloOrigen = null;
+
+  // 1) EL NOMBRE DEL ARCHIVO MANDA. "marzo.xls", "marzo_aner.xls", "03-tarjeta.xls".
+  //    Es lo único que no se puede malinterpretar: lo has puesto tú a propósito.
+  const nombre = normHeader(file.name.replace(/\.[a-z0-9]+$/i, ''));
+  const mesPorNombre = MONTHS.findIndex(m => new RegExp(`(^|[^a-z])${m}([^a-z]|$)`).test(nombre));
+  let numMes = mesPorNombre !== -1 ? mesPorNombre + 1 : null;
+  if (numMes === null) {
+    const mm = nombre.match(/(^|[^0-9])(0[1-9]|1[0-2])([^0-9]|$)/);
+    if (mm) numMes = Number(mm[2]);
+  }
+  if (numMes !== null) {
+    // El año lo saca de las propias operaciones de ese mes; si no hay, de la última.
+    const mmStr = String(numMes).padStart(2, '0');
+    const delMes = fechasOp.filter(d => d.slice(5, 7) === mmStr);
+    const ref = delMes.length ? delMes[delMes.length - 1] : fechasOp[fechasOp.length - 1];
+    const anio = ref ? Number(ref.slice(0, 4)) : new Date().getFullYear();
+    cicloMes = `${anio}-${mmStr}`;
+    cicloOrigen = 'nombre del archivo';
+  }
+
+  // 2) Si el nombre no lo dice: la fila PAGO RECIBO, que abre el ciclo.
+  if (!cicloMes) {
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length < 3) continue;
+      if (!/PAGO RECIBO/i.test(String(row[idxConcepto] || ''))) continue;
+      const d = parseDateSpanish(row[idxFecha]);
+      if (d) { cicloMes = d.slice(0, 7); cicloOrigen = 'fila PAGO RECIBO'; break; }
+    }
+  }
+
+  // 3) Último recurso: el mes de la última operación. Puede fallar, y lo avisa.
+  if (!cicloMes && fechasOp.length) {
+    cicloMes = fechasOp[fechasOp.length - 1].slice(0, 7);
+    cicloOrigen = 'última operación (poco fiable)';
+  }
+  // Día 1 del mes siguiente al ciclo: la fecha en que Kutxabank lo cobra.
+  let cargoISO = null;
+  if (cicloMes) {
+    const [cy, cm] = cicloMes.split('-').map(Number);
+    const d = new Date(cy, cm, 1);
+    cargoISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
   const movs = [];
   const dedupSeen = new Map();
   const cuentasDetectadas = new Set();
@@ -4409,6 +4513,11 @@ async function parseMovementFile(file, accId) {
       assignedTo: null, ignored: false, isCardConsolidation: false
     };
     if (fechaProcISO) mov.processDate = fechaProcISO;
+    // El ciclo al que pertenece y la fecha exacta en que se cobra. Esto es lo que
+    // convierte un listado de líneas sueltas en un extracto situado en el tiempo.
+    // Solo para tarjetas: la cuenta corriente no tiene ciclos.
+    const esTarjeta = state.accounts.find(a => a.id === cuentaFila)?.type === 'card';
+    if (cicloMes && esTarjeta) { mov.cycleMonth = cicloMes; mov.chargeDate = cargoISO; }
     movs.push(mov);
   }
 
@@ -4423,6 +4532,7 @@ async function parseMovementFile(file, accId) {
       hasProcCol: idxFechaProc !== -1,
       parsed: movs.length,
       withProcessDate: conProc,
+      cicloMes, cargoISO, cicloOrigen,
       autoTarjeta: [...cuentasDetectadas]
         .map(id => state.accounts.find(a => a.id === id)?.name || id)
     }
@@ -5309,6 +5419,34 @@ function renderCuadre() {
         Base completa: <strong>${state.movements.length}</strong> movimientos ·
         <strong style="color:${state.movements.filter(m => m.processDate).length ? 'var(--income)' : 'var(--warning)'};">${state.movements.filter(m => m.processDate).length}</strong> con fecha de proceso
       </div>
+      ${(lastImp.files && lastImp.files.length) ? `
+      <div style="margin-top:12px; overflow-x:auto;">
+        <div style="font-size:0.75rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">Qué leyó la app de cada archivo</div>
+        <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
+          <tr style="color:var(--text-faint); text-align:left;">
+            <th style="padding:4px 8px 4px 0; font-weight:600;">Archivo</th>
+            <th style="padding:4px 8px; font-weight:600;">Extracto de</th>
+            <th style="padding:4px 8px; font-weight:600;">Se cobra el</th>
+            <th style="padding:4px 8px; font-weight:600;">Tarjeta(s)</th>
+            <th style="padding:4px 8px; font-weight:600;">Filas</th>
+            <th style="padding:4px 8px; font-weight:600;">Con fecha de proceso</th>
+          </tr>
+          ${lastImp.files.map(f => `
+          <tr style="border-top:1px solid var(--border-soft);">
+            <td style="padding:5px 8px 5px 0;" title="Cabecera leída: ${escapeHTML(f.header.join(' | '))}">${escapeHTML(f.file)}</td>
+            <td style="padding:5px 8px; color:${f.cicloOrigen === 'nombre del archivo' ? 'var(--income)' : (f.cicloMes ? 'var(--warning)' : 'var(--expense)')};" title="${f.cicloOrigen ? 'Detectado por: ' + escapeHTML(f.cicloOrigen) : 'No se ha podido determinar'}">${f.cicloMes ? escapeHTML(MONTHS[Number(f.cicloMes.slice(5)) - 1] + ' ' + f.cicloMes.slice(0, 4)) : '⚠️ no detectado'}${f.cicloOrigen && f.cicloOrigen !== 'nombre del archivo' ? ' <span style="font-size:0.9em; opacity:.8;">(no por el nombre)</span>' : ''}</td>
+            <td style="padding:5px 8px; font-variant-numeric:tabular-nums;">${f.cargoISO ? f.cargoISO.split('-').reverse().join('/') : '—'}</td>
+            <td style="padding:5px 8px; color:${f.autoTarjeta.length ? 'var(--accent)' : 'var(--text-faint)'};">${f.autoTarjeta.length ? escapeHTML(f.autoTarjeta.join(', ')) : 'la elegida en el diálogo'}</td>
+            <td style="padding:5px 8px; font-variant-numeric:tabular-nums;">${f.parsed}</td>
+            <td style="padding:5px 8px; font-variant-numeric:tabular-nums; color:${f.withProcessDate === f.parsed && f.parsed > 0 ? 'var(--income)' : 'var(--expense)'};">
+              ${f.withProcessDate} / ${f.parsed}${f.hasProcCol ? '' : ' · sin columna'}
+            </td>
+          </tr>`).join('')}
+        </table>
+        <div style="font-size:0.72rem; color:var(--text-faint); margin-top:6px;">
+          Pasa el ratón por el nombre del archivo para ver la cabecera exacta que leyó.
+        </div>
+      </div>` : ''}
     </div>
 
     ${unass.length > 0 ? `
