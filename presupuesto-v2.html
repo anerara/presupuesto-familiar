@@ -1808,8 +1808,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.5.1';
-const APP_BUILD   = '2026-08-26 · saldado por calendario';
+const APP_VERSION = '2.6.0';
+const APP_BUILD   = '2026-08-26 · reparto automático por número de tarjeta';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4193,12 +4193,16 @@ function showImportModal() {
   openModal(`
     <h2>📥 Importar movimientos</h2>
     <div class="form-group">
-      <label>Selecciona la cuenta o tarjeta a la que pertenece el archivo</label>
+      <label>Cuenta por defecto (solo si el archivo no dice de qué tarjeta es)</label>
       <select id="importAccountSel">${optsHtml}</select>
     </div>
     <p style="font-size:0.82rem; color:var(--text-dim); margin-bottom:14px;">
-      Puedes seleccionar uno o varios archivos (.xls, .xlsx, .csv) exportados de Kutxabank.
-      Los movimientos duplicados se detectan automáticamente por fecha, importe y concepto.
+      <strong style="color:var(--accent);">Suelta aquí todos los extractos de tarjeta a la vez.</strong>
+      Los extractos de tarjeta traen una columna con el número, así que la app reparte cada
+      movimiento en su tarjeta sola — no hace falta ir de uno en uno.
+      <br><br>
+      Reimportar es seguro: no duplica ni pierde asignaciones. A los movimientos que ya tengas
+      les rellena la <strong>fecha de proceso</strong> que faltara.
     </p>
     <div class="modal-actions">
       <button class="btn" data-action="cancel">Cancelar</button>
@@ -4306,7 +4310,8 @@ async function importMovementFiles(files) {
   }
   console.table(parseInfos.map(i => ({
     fichero: i.file, columnaProceso: i.hasProcCol ? 'sí' : 'NO',
-    filas: i.parsed, conFechaProceso: i.withProcessDate
+    filas: i.parsed, conFechaProceso: i.withProcessDate,
+    tarjetaDetectada: (i.autoTarjeta || []).join(', ') || '—'
   })));
 }
 
@@ -4318,8 +4323,27 @@ async function parseMovementFile(file, accId) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
 
   let headerIdx = -1;
-  let idxFecha = -1, idxFechaProc = -1, idxConcepto = -1, idxImporte = -1;
+  let idxFecha = -1, idxFechaProc = -1, idxConcepto = -1, idxImporte = -1, idxTarjeta = -1;
   let headerRaw = null;
+
+  // Los extractos de tarjeta traen una columna con el número (ej. "4019891400"),
+  // que es el final del número configurado en la cuenta ("TARJ.CRDTO 4921074019891400").
+  // Con eso la app sabe sola de qué tarjeta es cada fila: puedes soltarle todos los
+  // extractos de golpe sin ir eligiendo la cuenta uno a uno.
+  const tarjetasConocidas = state.accounts
+    .filter(a => a.type === 'card' && a.chargeConcept)
+    .map(a => {
+      const digits = String(a.chargeConcept).replace(/\D/g, '');
+      return digits.length >= 8 ? { id: a.id, digits } : null;
+    })
+    .filter(Boolean);
+
+  const resolverTarjeta = (valor) => {
+    const d = String(valor == null ? '' : valor).replace(/\D/g, '');
+    if (d.length < 6) return null;
+    const hit = tarjetasConocidas.filter(t => t.digits.endsWith(d) || d.endsWith(t.digits));
+    return hit.length === 1 ? hit[0].id : null;   // ambiguo = no tocamos nada
+  };
 
   // Detección de cabecera TOLERANTE: sin acentos, sin espacios duros, por contenido.
   // Antes era comparación exacta (=== 'fecha de proceso') y cualquier variante del
@@ -4339,6 +4363,7 @@ async function parseMovementFile(file, accId) {
     );
     const fConcepto = row.findIndex(c => /concepto|descripcion|detalle|comercio|establecimiento/.test(c));
     const fImporte  = row.findIndex(c => /importe|cantidad|euros/.test(c));
+    const fTarjeta  = row.findIndex(c => /^(n[ºo°]? ?)?(de )?tarjeta$|tarjeta$|^num.*tarjeta/.test(c));
 
     if (fFecha !== -1 && fConcepto !== -1 && fImporte !== -1) {
       headerIdx = i;
@@ -4346,6 +4371,7 @@ async function parseMovementFile(file, accId) {
       idxFechaProc = fFechaProc; // puede ser -1 si el extracto no la trae
       idxConcepto = fConcepto;
       idxImporte = fImporte;
+      idxTarjeta = fTarjeta;     // -1 en la cuenta corriente, que no la trae
       headerRaw = rows[i];
       break;
     }
@@ -4360,6 +4386,7 @@ async function parseMovementFile(file, accId) {
 
   const movs = [];
   const dedupSeen = new Map();
+  const cuentasDetectadas = new Set();
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length < 3) continue;
@@ -4369,12 +4396,16 @@ async function parseMovementFile(file, accId) {
     const concept = String(row[idxConcepto] || '').trim().replace(/\s+/g, ' ');
     const amount = parseAmount(row[idxImporte]);
     if (amount === 0 && !concept) continue;
-    const twinKey = `${fechaISO}|${amount.toFixed(2)}|${concept}`;
+    // La columna "tarjeta" manda sobre la cuenta elegida en el diálogo.
+    const cuentaFila = (idxTarjeta !== -1 ? resolverTarjeta(row[idxTarjeta]) : null) || accId;
+    if (cuentaFila !== accId) cuentasDetectadas.add(cuentaFila);
+
+    const twinKey = `${cuentaFila}|${fechaISO}|${amount.toFixed(2)}|${concept}`;
     const idx = dedupSeen.get(twinKey) || 0;
     dedupSeen.set(twinKey, idx + 1);
-    const id = movHash(fechaISO, amount, concept, accId, idx);
+    const id = movHash(fechaISO, amount, concept, cuentaFila, idx);
     const mov = {
-      id, date: fechaISO, concept, amount, accountId: accId,
+      id, date: fechaISO, concept, amount, accountId: cuentaFila,
       assignedTo: null, ignored: false, isCardConsolidation: false
     };
     if (fechaProcISO) mov.processDate = fechaProcISO;
@@ -4391,7 +4422,9 @@ async function parseMovementFile(file, accId) {
       header: headerRaw,
       hasProcCol: idxFechaProc !== -1,
       parsed: movs.length,
-      withProcessDate: conProc
+      withProcessDate: conProc,
+      autoTarjeta: [...cuentasDetectadas]
+        .map(id => state.accounts.find(a => a.id === id)?.name || id)
     }
   };
 }
