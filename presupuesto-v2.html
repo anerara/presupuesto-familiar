@@ -1707,7 +1707,8 @@
           <option value="unassigned">Sin asignar</option>
           <option value="assigned">Asignados</option>
           <option value="ignored">Ignorados</option>
-          <option value="noproc">⚠️ Sin fecha de proceso</option>
+          <option value="nociclo">⚠️ Sin extracto asignado</option>
+          <option value="noproc">Sin fecha de proceso</option>
           <option value="conproc">Con fecha de proceso</option>
         </select>
         <button class="btn btn-sm" id="btnAddManualMov" style="margin-left:auto;" title="Añadir un movimiento manualmente (útil para cargos duplicados que el hash detectó como iguales)">➕ Añadir mov manual</button>
@@ -1808,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.8.0';
-const APP_BUILD   = '2026-08-26 · el mes lo manda el nombre del archivo';
+const APP_VERSION = '2.9.0';
+const APP_BUILD   = '2026-08-27 · cada cifra se abre y se ve';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2331,8 +2332,8 @@ function checkCardVerification(cardId, monthIdx) {
   }
 
   let compras = 0, cobrado = 0, pendiente = 0;
-  const porCargo = new Map();      // mes de cargo → importe que aporta
-  let sinProceso = 0;
+  const porCargo = new Map();               // mes de cargo → importe que aporta
+  const sinCiclo = { n: 0, importe: 0 };    // movimientos que no sabemos de qué extracto son
 
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
@@ -2341,7 +2342,9 @@ function checkCardVerification(cardId, monthIdx) {
     if (m.date < from || m.date > to) continue;
     const val = Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
     compras += val;
-    if (!m.chargeDate) sinProceso++;   // no sabemos de qué extracto salió
+    // Sin extracto asignado no sabemos en qué cargo lo liquidaron. NO lo metemos en
+    // el desglose: mezclar un dato leído con una suposición es peor que no decir nada.
+    if (!m.chargeDate) { sinCiclo.n++; sinCiclo.importe += val; continue; }
     const mesCargo = chargeMonthFor(m);
     porCargo.set(mesCargo, (porCargo.get(mesCargo) || 0) + val);
   }
@@ -2367,7 +2370,7 @@ function checkCardVerification(cardId, monthIdx) {
   // El desglose por cargo solo se enseña si TODOS los movimientos del mes traen su
   // fecha de proceso. Si falta alguna, la app no sabe en qué cargo lo liquidaron:
   // antes lo suponía y te daba una fecha inventada. Ahora se calla.
-  const cargos = sinProceso > 0 ? [] : [...porCargo.entries()]
+  const cargos = [...porCargo.entries()]
     .filter(([, v]) => Math.abs(v) > 0.005)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([mes, importe]) => ({ mes, importe }));
@@ -2375,7 +2378,7 @@ function checkCardVerification(cardId, monthIdx) {
   return {
     compras, cobrado, pendiente,
     saldado: Math.abs(pendiente) < 0.01,
-    cargos, sinProceso,
+    cargos, sinCiclo,
     hasData: Math.abs(compras) > 0.005
   };
 }
@@ -2643,13 +2646,20 @@ function renderCardVerification() {
       <div class="cv-row">
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
-          <span title="Lo que se compr\u00f3 con esta tarjeta en ${nombreMes}, neto de devoluciones">Gasto de ${nombreMes}: <strong>${fmt(chk.compras)}</strong></span>
+          <span>Gasto de ${nombreMes}: <strong class="cv-gasto" data-card="${card.id}" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" title="Pulsa para ver de qu\u00e9 l\u00edneas est\u00e1 hecho este n\u00famero">${fmt(chk.compras)}</strong></span>
           ${chk.saldado
             ? `<span style="color:var(--income);">saldado${chk.cargos.length ? ' \u00b7 ' + cargosTxt : ''}</span>`
             : `<span title="Ya cobrado por Kutxabank">Cobrado: <strong>${fmt(chk.cobrado)}</strong></span>
                <span style="color:var(--warning);">pendiente de cobro: <strong>${fmt(chk.pendiente)}</strong></span>`}
         </div>
       </div>
+      ${chk.sinCiclo.n ? `
+      <div style="font-size:0.76rem; color:var(--warning); padding:0 0 8px 18px; line-height:1.5;">
+        \u26a0\ufe0f <strong>${chk.sinCiclo.n}</strong> ${chk.sinCiclo.n === 1 ? 'movimiento' : 'movimientos'}
+        (<strong>${fmt(chk.sinCiclo.importe)}</strong>) sin extracto asignado: no s\u00e9 en qu\u00e9 cargo
+        los liquidaron, as\u00ed que no los meto en el desglose de arriba.
+        Reimporta el extracto de esta tarjeta que los contenga, con el mes en el nombre del archivo.
+      </div>` : ''}
     `;
   }).filter(Boolean).join('');
 
@@ -2660,6 +2670,70 @@ function renderCardVerification() {
       ${rows}
     </div>
   `;
+  el.querySelectorAll('.cv-gasto').forEach(n => {
+    n.onclick = () => showCardMonthDetail(n.dataset.card, currentMonthIdx);
+  });
+}
+
+// Cada cifra del panel se puede abrir. Ninguna cifra deber\u00eda ser un acto de fe:
+// si el total no cuadra con el banco, aqu\u00ed se ve qu\u00e9 l\u00ednea sobra o falta.
+function showCardMonthDetail(cardId, monthIdx) {
+  const card = state.accounts.find(a => a.id === cardId);
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const to = `2026-${mm}-${String(new Date(2026, monthIdx + 1, 0).getDate()).padStart(2, '0')}`;
+
+  const movs = state.movements
+    .filter(m => m.accountId === cardId && !m.isCardConsolidation && !m.isInternalTransfer
+                 && !m.ignored && m.date >= from && m.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.concept.localeCompare(b.concept));
+
+  const total = movs.reduce((s, m) => s + Math.abs(m.amount) * (m.amount < 0 ? 1 : -1), 0);
+
+  // Marcamos posibles repetidos: mismo importe y mismo concepto dentro del mes.
+  const veces = {};
+  movs.forEach(m => { const k = m.concept + '|' + m.amount.toFixed(2); veces[k] = (veces[k] || 0) + 1; });
+
+  const filas = movs.map(m => {
+    const k = m.concept + '|' + m.amount.toFixed(2);
+    const rep = veces[k] > 1;
+    return `
+      <tr style="border-top:1px solid var(--border-soft); ${rep ? 'background:rgba(251,191,36,0.07);' : ''}">
+        <td style="padding:5px 8px 5px 0; white-space:nowrap; font-variant-numeric:tabular-nums;">${m.date.slice(8)}/${m.date.slice(5,7)}</td>
+        <td style="padding:5px 8px;">${escapeHTML(m.concept)}${rep ? ' <span style="color:var(--warning); font-size:0.85em;" title="Hay m\u00e1s de una l\u00ednea id\u00e9ntica en este mes">\u26a0 repetido</span>' : ''}</td>
+        <td style="padding:5px 8px; text-align:right; font-variant-numeric:tabular-nums; color:${m.amount < 0 ? 'var(--expense)' : 'var(--income)'};">${fmt(m.amount)}</td>
+        <td style="padding:5px 8px; white-space:nowrap; font-size:0.9em; color:${m.chargeDate ? 'var(--info)' : 'var(--warning)'};">
+          ${m.chargeDate ? m.chargeDate.split('-').reverse().join('/') : 'sin extracto'}
+        </td>
+      </tr>`;
+  }).join('');
+
+  openModal(`
+    <h2>\ud83d\udcb3 ${escapeHTML(card?.name || cardId)} \u00b7 ${MONTHS[monthIdx]}</h2>
+    <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:10px;">
+      ${movs.length} movimientos con fecha de compra en ${MONTHS[monthIdx]}. La \u00faltima columna es
+      el cargo en el que Kutxabank los liquida, seg\u00fan el extracto del que salieron.
+    </p>
+    <div style="max-height:52vh; overflow:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+        <tr style="color:var(--text-faint); text-align:left;">
+          <th style="padding:4px 8px 4px 0;">Fecha</th>
+          <th style="padding:4px 8px;">Concepto</th>
+          <th style="padding:4px 8px; text-align:right;">Importe</th>
+          <th style="padding:4px 8px;">Se cobra</th>
+        </tr>
+        ${filas || '<tr><td colspan="4" style="padding:14px; color:var(--text-faint); font-style:italic;">Ning\u00fan movimiento</td></tr>'}
+      </table>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding-top:10px; margin-top:8px; border-top:1px solid var(--border); font-weight:700;">
+      <span>Total</span>
+      <span style="font-variant-numeric:tabular-nums;">${fmt(total)}</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" data-action="cancel">Cerrar</button>
+    </div>
+  `);
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
 }
 
 function renderAnnualSummary() {
@@ -4896,6 +4970,10 @@ function renderMovements() {
   else if (movFilters.status === 'assigned') filtered = filtered.filter(m => m.assignedTo);
   else if (movFilters.status === 'ignored') filtered = filtered.filter(m => m.ignored || m.isCardConsolidation);
   // Sin fecha de proceso: los que pueden estar cayendo en el ciclo de tarjeta equivocado.
+  else if (movFilters.status === 'nociclo') filtered = filtered.filter(m => {
+    const acc = state.accounts.find(a => a.id === m.accountId);
+    return acc?.type === 'card' && !m.chargeDate && !m.isCardConsolidation && !m.isInternalTransfer && !m.ignored;
+  });
   else if (movFilters.status === 'noproc') filtered = filtered.filter(m => !m.processDate && !m.isCardConsolidation && !m.isInternalTransfer);
   else if (movFilters.status === 'conproc') filtered = filtered.filter(m => !!m.processDate);
 
@@ -4938,11 +5016,11 @@ function renderMovementRow(m) {
         : `<span class="mov-check-placeholder"></span>`}
       <div class="mov-date">
         ${fmtDateShort(m.date)}
-        ${esTarjeta && m.processDate && m.processDate !== m.date
-          ? `<span style="display:block; font-size:0.66rem; color:var(--info);" title="Fecha de proceso: el ciclo en el que Kutxabank lo cobra">→ ${fmtDateShort(m.processDate)}</span>`
+        ${esTarjeta && canSelect && m.chargeDate
+          ? `<span style="display:block; font-size:0.66rem; color:var(--info);" title="Extracto de ${MONTHS[Number(m.cycleMonth.slice(5)) - 1]} · Kutxabank lo cobra el ${m.chargeDate.split('-').reverse().join('/')}">cobro ${fmtDateShort(m.chargeDate)}</span>`
           : ''}
-        ${esTarjeta && !m.processDate && canSelect
-          ? `<span style="display:block; font-size:0.66rem; color:var(--warning);" title="Sin fecha de proceso: la app tiene que suponer que se procesó el día de la compra, y puede caer en el ciclo equivocado. Reimporta el extracto que tenga la columna.">sin proc.</span>`
+        ${esTarjeta && canSelect && !m.chargeDate
+          ? `<span style="display:block; font-size:0.66rem; color:var(--warning);" title="Sin extracto asignado: la app no sabe en qué cargo lo liquidaron. Reimporta el extracto que lo contenga, con el mes en el nombre del archivo.">sin extracto</span>`
           : ''}
       </div>
       <div class="mov-concept" title="${escapeHTML(m.concept)}">
