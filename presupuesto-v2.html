@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.9.0';
-const APP_BUILD   = '2026-08-27 · cada cifra se abre y se ve';
+const APP_VERSION = '2.9.4';
+const APP_BUILD   = '2026-08-27 · abonos por adelantado a la vista';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2335,6 +2335,16 @@ function checkCardVerification(cardId, monthIdx) {
   const porCargo = new Map();               // mes de cargo → importe que aporta
   const sinCiclo = { n: 0, importe: 0 };    // movimientos que no sabemos de qué extracto son
 
+  // Abonos hechos sobre la tarjeta dentro del mes. No son gasto, pero hacen falta
+  // para atar el número con el Excel: Kutxabank llama "total dispuesto" al saldo que
+  // queda DESPUÉS de restarlos, no a lo gastado. Sin este dato el mes parece inflado.
+  let anticipos = 0;
+  for (const m of state.movements) {
+    if (m.date < from || m.date > to) continue;
+    if (m.accountId === cardId && m.isInternalTransfer && m.amount > 0) anticipos += m.amount;
+    else if (m.isInternalTransfer && m.transferToCardId === cardId) anticipos += Math.abs(m.amount);
+  }
+
   for (const m of state.movements) {
     if (m.accountId !== cardId) continue;
     if (m.isCardConsolidation || m.isInternalTransfer || m.ignored) continue;
@@ -2376,7 +2386,7 @@ function checkCardVerification(cardId, monthIdx) {
     .map(([mes, importe]) => ({ mes, importe }));
 
   return {
-    compras, cobrado, pendiente,
+    compras, cobrado, pendiente, anticipos,
     saldado: Math.abs(pendiente) < 0.01,
     cargos, sinCiclo,
     hasData: Math.abs(compras) > 0.005
@@ -2647,6 +2657,7 @@ function renderCardVerification() {
         <div class="cv-name">${icon} <strong>${escapeHTML(card.name)}</strong></div>
         <div class="cv-nums">
           <span>Gasto de ${nombreMes}: <strong class="cv-gasto" data-card="${card.id}" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" title="Pulsa para ver de qu\u00e9 l\u00edneas est\u00e1 hecho este n\u00famero">${fmt(chk.compras)}</strong></span>
+          ${chk.anticipos > 0.005 ? `<span style="color:var(--info);" title="Abonos que hiciste sobre la tarjeta este mes. No son gasto: son gasto ya pagado por adelantado. El &quot;total dispuesto&quot; del extracto de Kutxabank ya los tiene restados, por eso su n\u00famero es menor que \u00e9ste.">Abonado por adelantado: <strong>${fmt(chk.anticipos)}</strong></span>` : ''}
           ${chk.saldado
             ? `<span style="color:var(--income);">saldado${chk.cargos.length ? ' \u00b7 ' + cargosTxt : ''}</span>`
             : `<span title="Ya cobrado por Kutxabank">Cobrado: <strong>${fmt(chk.cobrado)}</strong></span>
@@ -2690,17 +2701,19 @@ function showCardMonthDetail(cardId, monthIdx) {
 
   const total = movs.reduce((s, m) => s + Math.abs(m.amount) * (m.amount < 0 ? 1 : -1), 0);
 
-  // Marcamos posibles repetidos: mismo importe y mismo concepto dentro del mes.
+  // L\u00edneas gemelas: mismo d\u00eda, mismo concepto, mismo importe. Casi siempre son
+  // REALES (dos peajes iguales, dos caf\u00e9s seguidos), as\u00ed que se marcan en gris como
+  // informaci\u00f3n, no como alarma. El banco las cobra las dos.
   const veces = {};
-  movs.forEach(m => { const k = m.concept + '|' + m.amount.toFixed(2); veces[k] = (veces[k] || 0) + 1; });
+  movs.forEach(m => { const k = m.date + '|' + m.concept + '|' + m.amount.toFixed(2); veces[k] = (veces[k] || 0) + 1; });
 
   const filas = movs.map(m => {
-    const k = m.concept + '|' + m.amount.toFixed(2);
+    const k = m.date + '|' + m.concept + '|' + m.amount.toFixed(2);
     const rep = veces[k] > 1;
     return `
-      <tr style="border-top:1px solid var(--border-soft); ${rep ? 'background:rgba(251,191,36,0.07);' : ''}">
+      <tr style="border-top:1px solid var(--border-soft);">
         <td style="padding:5px 8px 5px 0; white-space:nowrap; font-variant-numeric:tabular-nums;">${m.date.slice(8)}/${m.date.slice(5,7)}</td>
-        <td style="padding:5px 8px;">${escapeHTML(m.concept)}${rep ? ' <span style="color:var(--warning); font-size:0.85em;" title="Hay m\u00e1s de una l\u00ednea id\u00e9ntica en este mes">\u26a0 repetido</span>' : ''}</td>
+        <td style="padding:5px 8px;">${escapeHTML(m.concept)}${rep ? ` <span style="color:var(--text-faint); font-size:0.85em;" title="Hay ${veces[k]} l\u00edneas id\u00e9nticas ese mismo d\u00eda. Suele ser real (dos peajes, dos billetes). Compru\u00e9balo en el extracto solo si el total no te cuadra.">\u00d7${veces[k]}</span>` : ''}</td>
         <td style="padding:5px 8px; text-align:right; font-variant-numeric:tabular-nums; color:${m.amount < 0 ? 'var(--expense)' : 'var(--income)'};">${fmt(m.amount)}</td>
         <td style="padding:5px 8px; white-space:nowrap; font-size:0.9em; color:${m.chargeDate ? 'var(--info)' : 'var(--warning)'};">
           ${m.chargeDate ? m.chargeDate.split('-').reverse().join('/') : 'sin extracto'}
@@ -4917,6 +4930,9 @@ function markCardConsolidations(movs) {
     // pero salió de la cuenta (o vino de otro sitio). No es ingreso ni gasto real.
     const accHere = state.accounts.find(a => a.id === m.accountId);
     if (accHere && accHere.type === 'card' && !m.isCardConsolidation && !m.isInternalTransfer) {
+      // OJO: no añadir aquí "NO EN TARJETA DE CREDITO". Se probó en la v2.9.2 y Aner
+      // lo rechazó: ese movimiento sí es gasto suyo (pasa de la cuenta a la tarjeta)
+      // y ya está distribuido y asignado en el presupuesto. Revertido en la v2.9.3.
       const esAbonoInterno = conceptUp.includes('PAGO RECIBO')
         || conceptUp.includes('ABONO TARJ')
         || conceptUp.includes('ABONO EN TARJETA');
