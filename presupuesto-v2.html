@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.9.8';
-const APP_BUILD   = '2026-08-27 · recoloca movimientos mal asignados';
+const APP_VERSION = '2.9.9';
+const APP_BUILD   = '2026-08-27 · fusiona duplicados conservando asignaciones';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4456,12 +4456,19 @@ async function importMovementFiles(files) {
           }
           if (tocado) totalEnriched++;
 
-          // Si además quedó una copia del mismo gasto en otra tarjeta (por una
-          // importación anterior con la cuenta equivocada), se elimina: es un
-          // duplicado que estaría inflando el gasto de esa otra tarjeta.
+          // Si además quedó una copia del mismo gasto en otra tarjeta (de una
+          // importación anterior con la cuenta equivocada), se FUSIONA con el bueno:
+          // la asignación al presupuesto se traspasa y los enlaces se reapuntan antes
+          // de eliminarla. Así no se pierde trabajo hecho a mano ni queda el duplicado
+          // inflando el gasto de la otra tarjeta.
           const copias = (byClave.get(claveLogica(m)) || [])
-            .filter(x => x !== existing && x.accountId !== m.accountId && !x.assignedTo);
+            .filter(x => x !== existing && x.accountId !== m.accountId);
           for (const c of copias) {
+            if (c.assignedTo && !existing.assignedTo) {
+              existing.assignedTo = c.assignedTo;
+              existing.ignored = c.ignored;
+            }
+            remapMovId(c.id, existing.id);
             const i = state.movements.indexOf(c);
             if (i !== -1) { state.movements.splice(i, 1); byId.delete(c.id); totalMovidos++; }
           }
