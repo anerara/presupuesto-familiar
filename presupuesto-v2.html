@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.10.1';
-const APP_BUILD   = '2026-08-27 · la aspa de eliminar ya no se pierde';
+const APP_VERSION = '2.11.0';
+const APP_BUILD   = '2026-08-27 · pendiente de tarjetas por ciclo';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2533,26 +2533,48 @@ function calcCardConsolidationsInMonth(monthIdx) {
 }
 
 function calcPendingCardsInMonth(monthIdx) {
-  // Lógica HÍBRIDA:
-  // 1) Si ya existe el TARJ.CRDTO del MES SIGUIENTE → usar ese número (cuadra exacto con el banco)
-  //    Los cargos consolidados son sagrados: cuadran por sí solos independientemente de qué
-  //    fechas de operación tengan las compras que agrupan.
-  // 2) Si NO existe (mes en curso) → estimación por compras del mes menos traspasos anticipados
-  if (monthIdx >= 11) {
-    // Diciembre: no hay mes siguiente en el año, usar estimación
-    const compras = calcCardSpendInMonth(monthIdx);
-    const traspasos = calcInternalTransfersInMonth(monthIdx);
-    return Math.max(0, compras - traspasos);
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const dias = new Date(2026, monthIdx + 1, 0).getDate();
+  const finMes = `2026-${mm}-${String(dias).padStart(2, '0')}`;
+
+  // MODELO DE CICLOS: pendiente al cierre del mes = todo lo comprado hasta esa fecha
+  // que el banco AÚN NO ha cobrado, sea cual sea el cargo que lo vaya a liquidar.
+  //
+  // Antes esto usaba solo el TARJ.CRDTO del mes siguiente, y se dejaba fuera las colas:
+  // lo comprado a final de mes que viaja en el extracto siguiente y se cobra dos meses
+  // después (los peajes del 26/06, los Airbnb del 27/02...). Cada compra sabe su
+  // chargeDate desde que se importó el extracto, así que ya no hay que suponerlo.
+  const esTarjeta = id => state.accounts.find(a => a.id === id)?.type === 'card';
+  let conCiclo = 0, compras = 0, abonos = 0;
+
+  for (const m of (state.movements || [])) {
+    if (!esTarjeta(m.accountId)) continue;
+    if (m.date > finMes) continue;      // aún no se había comprado
+    if (!m.chargeDate) continue;        // sin extracto: no cuenta aquí, va al plan B
+    conCiclo++;
+    if (m.chargeDate <= finMes) continue;   // ya cobrado antes del cierre
+    if (m.isCardConsolidation) continue;
+    if (m.isInternalTransfer) {
+      // Un abono adelantado reduce lo que quedará por cobrar. El PAGO RECIBO no:
+      // ese ES el cobro de un ciclo anterior, no un adelanto.
+      if (m.amount > 0 && /ABONO/i.test(m.concept || '')) abonos += m.amount;
+      continue;
+    }
+    if (m.ignored) continue;
+    compras += Math.abs(m.amount) * (m.amount < 0 ? 1 : -1);
   }
-  const cargosProxMes = calcCardConsolidationsInMonth(monthIdx + 1);
-  if (cargosProxMes > 0) {
-    // Mes cerrado: usar el cargo real del banco
-    return cargosProxMes;
+
+  if (conCiclo > 0) return Math.max(0, compras - abonos);
+
+  // PLAN B, para datos importados antes de que existieran los ciclos: el cargo real
+  // del mes siguiente si ya está, y si no una estimación por compras del mes.
+  if (monthIdx < 11) {
+    const cargosProxMes = calcCardConsolidationsInMonth(monthIdx + 1);
+    if (cargosProxMes > 0) return cargosProxMes;
   }
-  // Mes en curso o sin datos: estimación
-  const compras = calcCardSpendInMonth(monthIdx);
+  const comprasMes = calcCardSpendInMonth(monthIdx);
   const traspasos = calcInternalTransfersInMonth(monthIdx);
-  return Math.max(0, compras - traspasos);
+  return Math.max(0, comprasMes - traspasos);
 }
 
 // Presupuesto semanal comparado con gasto real de esa semana:
