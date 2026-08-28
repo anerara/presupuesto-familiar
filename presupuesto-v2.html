@@ -194,6 +194,10 @@
   .annual-cell-value.negative { color: var(--expense); }
   .annual-cell-value.neutral { color: var(--text-faint); }
 
+  .annual-cell-delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .annual-cell-delta.positive { color: var(--income); }
+  .annual-cell-delta.negative { color: var(--expense); }
+
   .annual-cell-indicator {
     font-size: 0.6rem;
     color: var(--text-faint);
@@ -1809,8 +1813,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.11.0';
-const APP_BUILD   = '2026-08-27 · pendiente de tarjetas por ciclo';
+const APP_VERSION = '2.12.1';
+const APP_BUILD   = '2026-08-27 · aportacion del mes y desglose';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2229,59 +2233,77 @@ function toggleMonthClose(monthIdx) {
 // - Meses CERRADOS manualmente: usa el número congelado en closedBalance
 // - Meses ABIERTOS: arrastre + previsión (recalcula dinámicamente)
 // Un mes se cierra/abre con el botón 🔒. Los checks ✓ NO afectan.
-function calcMonthEndBalance(monthIdx) {
-  if (monthIdx < 0) {
-    // Antes de enero: saldo inicial (diciembre 2025)
-    return state.months.enero.saldoAnterior || 0;
-  }
+// Semanas tal y como TÚ las has escrito: solo los gastos anotados a mano. No se le
+// suman compras de tarjeta por caer dentro de las fechas de la semana — eso metía
+// dinero del banco en una cifra que debe ser tuya.
+function calcWeeksPlan(monthIdx) {
   const mo = state.months[MONTHS[monthIdx]];
-  // 1) Mes cerrado manualmente: usar el valor congelado
+  const esFuturo = monthIdx > getCurrentRealMonth();
+  return (mo.weeks || []).reduce((s, w) => {
+    const anotado = (w.expenses || []).reduce((ss, e) => ss + (e.amount || 0), 0);
+    const tienePresupuesto = w.budget !== null && w.budget !== undefined && w.budget > 0;
+    // En meses futuros vale el presupuesto de la semana si es mayor que lo ya anotado.
+    return s + (esFuturo && tienePresupuesto ? Math.max(w.budget, anotado) : anotado);
+  }, 0);
+}
+
+// Lo que aporta el mes por sí mismo, sin el arrastre: ingresos − gastos. Es la cifra
+// que mide la implicación de lo que anotas: si añades un gasto de 50 €, esto baja 50 €
+// y con ello baja el cierre de este mes y el de TODOS los siguientes, en cascada.
+function calcMonthBreakdown(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  const nominas = (mo.nominaAner?.amount || 0) + (mo.nominaIratxe?.amount || 0);
+  const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
+  const fijos = calcFixed(monthIdx);
+  const puntuales = calcPuntuales(monthIdx);
+  const semanas = calcWeeksPlan(monthIdx);
+  const ingresos = nominas + ingPuntuales;
+  const gastos = fijos + puntuales + semanas;
+  const arranque = (mo.saldoAnterior !== null && mo.saldoAnterior !== undefined)
+    ? mo.saldoAnterior
+    : (monthIdx > 0 ? calcMonthEndBalance(monthIdx - 1) : (state.months.enero.saldoAnterior || 0));
+  return { arranque, nominas, ingPuntuales, ingresos, fijos, puntuales, semanas, gastos,
+           delta: ingresos - gastos, cierre: calcMonthEndBalance(monthIdx) };
+}
+
+/* ==== BARRA DE BALANCE ANUAL ====
+   UNA fórmula, la misma para los doce meses:
+
+       saldo con el que arranca el mes
+     + nóminas + ingresos puntuales
+     − gastos fijos − gastos puntuales − semanas
+     = dinero que queda al final del mes
+
+   Cuentan TODOS los conceptos: estén asignados a un movimiento del banco o no, y
+   estén marcados como hechos o no. La barra es el presupuesto de Aner, no un reflejo
+   del extracto. En los meses sin movimientos son sus previsiones; en los ya pasados,
+   él depura los conceptos hasta que la cifra sea el saldo real disponible.
+
+   Por eso aquí NO entra nada del banco: ni el saldo de la libreta, ni el pendiente de
+   tarjetas, ni los movimientos importados sin asignar. Si un gasto del banco debe
+   contar, se asigna a un concepto y cuenta a través de él.                          */
+function calcMonthEndBalance(monthIdx) {
+  if (monthIdx < 0) return state.months.enero.saldoAnterior || 0;
+  const mo = state.months[MONTHS[monthIdx]];
+
+  // Cierre manual (🔒): el valor que congelaste manda sobre cualquier cálculo.
   if (mo.closed && mo.closedBalance !== undefined && mo.closedBalance !== null) {
     return mo.closedBalance;
   }
 
-  // 2) Mes "cerrado de facto" (ya existe TARJ.CRDTO del mes siguiente en la cuenta):
-  //    usar el Real disponible dinámico = libreta - pendiente tarjetas
-  //    Este número cuadra exacto con lo que muestra Kutxabank.
-  const cargosProxMes = monthIdx < 11 ? calcCardConsolidationsInMonth(monthIdx + 1) : 0;
-  if (cargosProxMes > 0 && hasImportedMovements()) {
-    return calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
-  }
+  // Arranque: el saldo anterior si lo has fijado a mano; si no, el cierre del mes
+  // previo, en cascada hasta el saldo de diciembre de 2025.
+  const arranque = (mo.saldoAnterior !== null && mo.saldoAnterior !== undefined)
+    ? mo.saldoAnterior
+    : calcMonthEndBalance(monthIdx - 1);
 
-  // 3) Mes en curso o futuro sin datos bancarios definitivos: arrastre + previsión + real conocido
-  // === MODELO: gastos de tarjeta se cuentan por compra individual ===
-  // Los TARJ.CRDTO NO cuentan en el balance (son solo consolidaciones informativas)
-  // Solo cuentan las compras individuales de tarjeta (asignadas o sin asignar)
-  //
-  // Balance = arranque
-  //         + ingresos previstos (nóminas + puntuales)
-  //         - gastos previstos (fijos + puntuales + weeks) — incluyen items enlazados con banco
-  //         + movs sin asignar (netos) — cuenta corriente sin TARJ.CRDTO
+  const ingresos = (mo.nominaAner?.amount || 0)
+                 + (mo.nominaIratxe?.amount || 0)
+                 + (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
 
-  const arranque = calcMonthEndBalance(monthIdx - 1);
-  const nominas = (mo.nominaAner.amount || 0) + (mo.nominaIratxe.amount || 0);
-  const ingPuntuales = (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
-  const ingresosMes = nominas + ingPuntuales;
-  const gastosPresupuesto = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeks(monthIdx);
+  const gastos = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeksPlan(monthIdx);
 
-  // Movs importados sin asignar del mes:
-  const mm = String(monthIdx + 1).padStart(2, '0');
-  const from = `2026-${mm}-01`;
-  const daysInMonth = new Date(2026, monthIdx + 1, 0).getDate();
-  const to = `2026-${mm}-${String(daysInMonth).padStart(2, '0')}`;
-  let unassignedNet = 0;
-  if (state.movements) {
-    for (const m of state.movements) {
-      if (m.date < from || m.date > to) continue;
-      if (m.assignedTo) continue; // ya cuenta vía item enlazado
-      if (m.ignored) continue;
-      if (m.isCardConsolidation) continue; // TARJ.CRDTO no cuenta como gasto
-      if (m.isInternalTransfer) continue; // traspasos internos no cuentan
-      unassignedNet += m.amount;
-    }
-  }
-
-  return arranque + ingresosMes - gastosPresupuesto + unassignedNet;
+  return arranque + ingresos - gastos;
 }
 
 // Verificación por tarjeta: compara compras del mes en la tarjeta vs TARJ.CRDTO del mes siguiente
@@ -2868,13 +2890,32 @@ function renderAnnualSummary() {
     else if (i > realMonth) indicator = 'previsto';
     // else pasado sin indicador
 
+    const b = calcMonthBreakdown(i);
+    const deltaTxt = (b.delta >= 0 ? '+' : '−') + fmt(Math.abs(b.delta)).replace('€', '');
+    const deltaCls = b.delta >= 0 ? 'positive' : 'negative';
+    const pie = [deltaTxt, indicator].filter(Boolean).join(' · ');
+
     const cell = document.createElement('div');
     cell.className = 'annual-cell' + (i === currentMonthIdx ? ' current' : '') + (state.months[MONTHS[i]].closed ? ' closed' : '');
     const lockIcon = state.months[MONTHS[i]].closed ? '🔒' : '';
+    cell.title =
+      `${MONTHS[i].toUpperCase()}\n` +
+      `  arranque (viene de ${i === 0 ? 'dic-2025' : MONTHS[i - 1]})   ${fmt(b.arranque)}\n` +
+      `+ nóminas                        ${fmt(b.nominas)}\n` +
+      `+ ingresos puntuales             ${fmt(b.ingPuntuales)}\n` +
+      `− gastos fijos                   ${fmt(b.fijos)}\n` +
+      `− gastos puntuales               ${fmt(b.puntuales)}\n` +
+      `− semanas                        ${fmt(b.semanas)}\n` +
+      `─────────────────────────────────────────\n` +
+      `= queda al final del mes         ${fmt(b.cierre)}\n\n` +
+      `El mes aporta por sí mismo ${deltaTxt} €.\n` +
+      `Ese cierre es el arranque de ${i < 11 ? MONTHS[i + 1] : 'enero del año siguiente'}:\n` +
+      `cualquier cosa que anotes aquí mueve todos los meses posteriores.` +
+      (state.months[MONTHS[i]].closed ? '\n\n🔒 Mes cerrado: la cifra está congelada.' : '');
     cell.innerHTML = `
       <div class="annual-cell-month">${MONTHS_SHORT[i]} ${lockIcon ? `<span class="lock-mark" data-toggle-lock="${i}" title="Mes cerrado — click para reabrir">${lockIcon}</span>` : `<span class="lock-mark lock-mark-open" data-toggle-lock="${i}" title="Click para cerrar mes">🔓</span>`}</div>
       <div class="annual-cell-value ${cls} ${sizeCls}">${formatted}</div>
-      ${indicator ? `<div class="annual-cell-indicator">${indicator}</div>` : ''}
+      ${pie ? `<div class="annual-cell-indicator"><span class="annual-cell-delta ${deltaCls}">${deltaTxt}</span>${indicator ? ' · ' + indicator : ''}</div>` : ''}
     `;
     cell.onclick = (ev) => {
       // Si se pulsó el candado, no navegar
