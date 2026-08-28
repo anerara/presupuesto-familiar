@@ -1809,8 +1809,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.9.9';
-const APP_BUILD   = '2026-08-27 · fusiona duplicados conservando asignaciones';
+const APP_VERSION = '2.10.1';
+const APP_BUILD   = '2026-08-27 · la aspa de eliminar ya no se pierde';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2584,6 +2584,21 @@ function fmtNum(n) {
   return (Math.round(Number(n || 0) * 100) / 100).toFixed(2);
 }
 
+// Enlaza el botón de eliminar (la ✕) a prueba de ediciones en curso.
+//
+// El problema: si hay un campo abierto en edición y pulsas la ✕, el navegador
+// dispara primero el `blur` del input. Ese blur guarda, llama a renderAll(), y la
+// lista entera se vuelve a dibujar — con lo que el botón que estabas pulsando deja
+// de existir y su `click` no llega a producirse nunca. La ✕ "no hace nada".
+//
+// La solución es cortarlo de raíz: preventDefault() en mousedown evita que el foco
+// se mueva, así que el blur no llega a dispararse y el click sí encuentra su botón.
+function bindDelete(btn, fn) {
+  if (!btn) return;
+  btn.onmousedown = (e) => e.preventDefault();
+  btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
@@ -2687,7 +2702,9 @@ function renderCardVerification() {
       ${!chk.saldado ? `
       <div style="font-size:0.76rem; color:var(--warning); padding:0 0 8px 18px; line-height:1.5;">
         ${chk.hayCargosDeEstaTarjeta
-          ? `Falta el cargo TARJ.CRDTO del <strong>01/${chk.mesLimite.slice(5)}/${chk.mesLimite.slice(0,4)}</strong> de esta tarjeta. Hasta que ese cargo esté importado, ${nombreMes} no se puede dar por saldado.`
+          ? `Falta el cargo TARJ.CRDTO del <strong>01/${chk.mesLimite.slice(5)}/${chk.mesLimite.slice(0,4)}</strong> de esta tarjeta. Hasta que ese cargo esté importado, ${nombreMes} no se puede dar por saldado.
+             ${!card.replacedByCardId ? `<br>¿Diste de baja esta tarjeta? Entonces ese cargo no existe: el banco arrastró lo que quedaba vivo a la tarjeta nueva.
+             <button class="section-action-btn cv-sustituta" data-card="${card.id}" style="margin-top:5px;">Indicar la tarjeta que la sustituyó…</button>` : ''}`
           : `<strong>Esta tarjeta no tiene ningún cargo TARJ.CRDTO enlazado.</strong> Pulsa el importe de arriba para ver cómo arreglarlo.`}
       </div>` : ''}
       ${chk.sinCiclo.n ? `
@@ -2709,6 +2726,9 @@ function renderCardVerification() {
   `;
   el.querySelectorAll('.cv-gasto').forEach(n => {
     n.onclick = () => showCardMonthDetail(n.dataset.card, currentMonthIdx);
+  });
+  el.querySelectorAll('.cv-sustituta').forEach(n => {
+    n.onclick = () => showAccountModal(n.dataset.card);
   });
 }
 
@@ -3111,7 +3131,7 @@ function renderIncomePuntuales() {
     row.querySelector('[data-action="toggle-done"]').onclick = () => toggleIncomePuntualDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editIncomePuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editIncomePuntual(id, 'amount');
-    row.querySelector('[data-action="delete"]').onclick = () => deleteIncomePuntual(id);
+    bindDelete(row.querySelector('[data-action="delete"]'), () => deleteIncomePuntual(id));
     enableDragSort(row, 'incomePuntuales');
   });
 }
@@ -3204,7 +3224,7 @@ function renderFixed() {
     row.querySelector('[data-action="toggle-done"]').onclick = () => toggleFixedDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editFixed(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editFixed(id, 'amount');
-    row.querySelector('[data-action="delete"]').onclick = () => deleteFixed(id);
+    bindDelete(row.querySelector('[data-action="delete"]'), () => deleteFixed(id));
     enableDragSort(row, 'fixed');
   });
 }
@@ -3414,7 +3434,7 @@ function renderPuntuales() {
     row.querySelector('[data-action="toggle-done"]').onclick = () => togglePuntualDone(id);
     row.querySelector('[data-action="edit-concept"]').onclick = () => editPuntual(id, 'concept');
     row.querySelector('[data-action="edit-amount"]').onclick = () => editPuntual(id, 'amount');
-    row.querySelector('[data-action="delete"]').onclick = () => deletePuntual(id);
+    bindDelete(row.querySelector('[data-action="delete"]'), () => deletePuntual(id));
     enableDragSort(row, 'puntuales');
   });
 }
@@ -3540,7 +3560,7 @@ function renderWeeks() {
   mo.weeks.forEach(w => {
     const card = document.querySelector(`.week-card[data-id="${w.id}"]`);
     if (!card) return;
-    card.querySelector('.week-delete').onclick = () => deleteWeek(w.id);
+    bindDelete(card.querySelector('.week-delete'), () => deleteWeek(w.id));
     card.querySelector('.week-add-btn').onclick = () => showAddWeekExpenseForm(w.id);
     const budgetBtn = card.querySelector('[data-action="edit-budget"]');
     if (budgetBtn) budgetBtn.onclick = () => editWeekBudget(w.id);
@@ -3549,7 +3569,7 @@ function renderWeeks() {
       row.querySelector('[data-action="toggle-done"]').onclick = () => toggleWeekExpenseDone(w.id, eid);
       row.querySelector('[data-action="edit-concept"]').onclick = () => editWeekExpense(w.id, eid, 'concept');
       row.querySelector('[data-action="edit-amount"]').onclick = () => editWeekExpense(w.id, eid, 'amount');
-      row.querySelector('[data-action="delete"]').onclick = () => deleteWeekExpense(w.id, eid);
+      bindDelete(row.querySelector('[data-action="delete"]'), () => deleteWeekExpense(w.id, eid));
       enableDragSort(row, 'weekExpenses', w.id);
     });
     enableDragSort(card, 'weeks');
