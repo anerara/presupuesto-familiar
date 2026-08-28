@@ -1441,6 +1441,7 @@
   .tb-card.libreta { border-left: 3px solid var(--info); }
   .tb-card.pending { border-left: 3px solid var(--warning); }
   .tb-card.real { border-left: 3px solid var(--income); }
+  .tb-card.depurar { border-left: 3px solid var(--text-faint); }
 
   .tb-label {
     font-size: 0.72rem;
@@ -1813,8 +1814,8 @@ const docRef = doc(db, 'presupuesto', DOC_ID);
 // === Sello de versión ===
 // Súbelo cada vez que despliegues. Sirve para saber de un vistazo si GitHub Pages
 // o el navegador te están sirviendo una build antigua cacheada.
-const APP_VERSION = '2.12.1';
-const APP_BUILD   = '2026-08-27 · aportacion del mes y desglose';
+const APP_VERSION = '2.13.1';
+const APP_BUILD   = '2026-08-27 · descompone la diferencia';
 
 const STORAGE_KEY = 'presupuesto2026_v2app';
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2665,6 +2666,110 @@ function renderAll() {
   renderWeeks();
 }
 
+
+/* ==== ¿DE DÓNDE SALE LA DIFERENCIA? ====
+   Cuando todo está asignado, lo que queda entre el presupuesto y el banco ya no es
+   trabajo pendiente: es estructural, y se puede descomponer exactamente.
+
+   presupuesto = arranque + ingresos anotados − gastos anotados
+   real        = libreta − pendiente de tarjetas
+               = arranque + (ingresos − gastos − TARJ.CRDTO − traspasos) − pendiente
+
+   Restando una de otra, la diferencia sale sola:
+
+     + TARJ.CRDTO pagados este mes   → gasto de MESES ANTERIORES que salió ahora
+     + traspasos a tarjetas          → dinero que salió de la cuenta pero aún no es gasto
+     + pendiente de tarjetas         → compras del mes que el banco aún no ha cobrado
+     − compras con tarjeta del mes   → ya anotadas como gasto del mes
+     + ingresos anotados de más
+     − gastos anotados de más
+     = diferencia                                                                    */
+function calcDesviacion(monthIdx) {
+  const mo = state.months[MONTHS[monthIdx]];
+  const mm = String(monthIdx + 1).padStart(2, '0');
+  const from = `2026-${mm}-01`;
+  const to = `2026-${mm}-${String(new Date(2026, monthIdx + 1, 0).getDate()).padStart(2, '0')}`;
+
+  const ingItems = (mo.nominaAner?.amount || 0) + (mo.nominaIratxe?.amount || 0)
+                 + (mo.incomePuntuales || []).reduce((s, p) => s + (p.amount || 0), 0);
+  const gastosItems = calcFixed(monthIdx) + calcPuntuales(monthIdx) + calcWeeksPlan(monthIdx);
+
+  let ingCuenta = 0, gastoCuenta = 0, crdto = 0, traspasos = 0;
+  for (const m of (state.movements || [])) {
+    if (m.date < from || m.date > to) continue;
+    const acc = state.accounts.find(a => a.id === m.accountId);
+    if (!acc || acc.type !== 'account') continue;
+    if (m.isCardConsolidation) { crdto += Math.abs(m.amount); continue; }
+    if (m.isInternalTransfer) { traspasos += Math.abs(m.amount); continue; }
+    if (m.ignored) continue;
+    if (m.amount > 0) ingCuenta += m.amount; else gastoCuenta += Math.abs(m.amount);
+  }
+
+  const comprasTarjeta = calcCardSpendInMonth(monthIdx);
+  const pendiente = calcPendingCardsInMonth(monthIdx);
+
+  const ingresosDeMas = ingItems - ingCuenta;
+  const gastosDeMas = gastosItems - gastoCuenta - comprasTarjeta;
+
+  const total = crdto + traspasos + pendiente - comprasTarjeta + ingresosDeMas - gastosDeMas;
+  return { ingItems, gastosItems, ingCuenta, gastoCuenta, crdto, traspasos,
+           comprasTarjeta, pendiente, ingresosDeMas, gastosDeMas, total };
+}
+
+function showDesviacionModal(monthIdx) {
+  const d = calcDesviacion(monthIdx);
+  const real = calcLibretaBalance(monthIdx) - calcPendingCardsInMonth(monthIdx);
+  const presupuesto = calcMonthEndBalance(monthIdx);
+  const diff = presupuesto - real;
+  const resto = diff - d.total;
+
+  const fila = (txt, val, ayuda, signo) => `
+    <tr style="border-top:1px solid var(--border-soft);">
+      <td style="padding:6px 8px 6px 0; width:22px; color:var(--text-faint);">${signo}</td>
+      <td style="padding:6px 8px 6px 0;">${txt}<div style="font-size:0.72rem; color:var(--text-faint);">${ayuda}</div></td>
+      <td style="padding:6px 0; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">${fmt(Math.abs(val))}</td>
+    </tr>`;
+
+  openModal(`
+    <h2>🔧 ${MONTHS[monthIdx]} · de dónde sale la diferencia</h2>
+    <div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:4px 0;">
+      <span>Presupuesto (barra anual)</span><strong style="font-variant-numeric:tabular-nums;">${fmt(presupuesto)}</strong></div>
+    <div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:4px 0;">
+      <span>Real disponible (banco)</span><strong style="font-variant-numeric:tabular-nums;">${fmt(real)}</strong></div>
+    <div style="display:flex; justify-content:space-between; padding:8px 0; margin-bottom:10px; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-weight:700;">
+      <span>Diferencia</span><span style="font-variant-numeric:tabular-nums;">${fmt(diff)}</span></div>
+
+    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      ${fila('Cargos TARJ.CRDTO pagados este mes', d.crdto,
+             'Gasto de meses anteriores que salió de la cuenta ahora. En enero es el gasto de 2025.', '+')}
+      ${fila('Traspasos a tarjetas', d.traspasos,
+             'Salieron de la cuenta pero todavía no son gasto: son pago por adelantado.', '+')}
+      ${fila('Pendiente de tarjetas', d.pendiente,
+             'Comprado este mes y aún no cobrado por el banco.', '+')}
+      ${fila('Compras con tarjeta del mes', d.comprasTarjeta,
+             'Ya contadas como gasto del mes en el presupuesto.', '−')}
+      ${Math.abs(d.ingresosDeMas) > 0.005 ? fila(
+        d.ingresosDeMas > 0 ? 'Ingresos anotados de más' : 'Ingresos anotados de menos', d.ingresosDeMas,
+        `Anotado ${fmt(d.ingItems)} · en la cuenta ${fmt(d.ingCuenta)}`, d.ingresosDeMas > 0 ? '+' : '−') : ''}
+      ${Math.abs(d.gastosDeMas) > 0.005 ? fila(
+        d.gastosDeMas > 0 ? 'Gastos anotados de más' : 'Gastos anotados de menos', d.gastosDeMas,
+        `Anotado ${fmt(d.gastosItems)} · en el banco ${fmt(d.gastoCuenta + d.comprasTarjeta)}`, d.gastosDeMas > 0 ? '−' : '+') : ''}
+      <tr style="border-top:2px solid var(--border);">
+        <td></td><td style="padding:8px 8px 8px 0; font-weight:700;">Total explicado</td>
+        <td style="padding:8px 0; text-align:right; font-weight:700; font-variant-numeric:tabular-nums;">${fmt(d.total)}</td></tr>
+      ${Math.abs(resto) > 0.5 ? `<tr>
+        <td></td><td style="padding:6px 8px 6px 0; color:var(--warning);">Sin explicar
+          <div style="font-size:0.72rem;">Aquí sí hay algo que revisar.</div></td>
+        <td style="padding:6px 0; text-align:right; color:var(--warning); font-variant-numeric:tabular-nums;">${fmt(resto)}</td></tr>` : `<tr>
+        <td></td><td style="padding:6px 8px 6px 0; color:var(--income);">Sin explicar: nada
+          <div style="font-size:0.72rem;">La diferencia es estructural, no un error de tus datos.</div></td>
+        <td style="padding:6px 0; text-align:right; color:var(--income); font-variant-numeric:tabular-nums;">${fmt(0)}</td></tr>`}
+    </table>
+    <div class="modal-actions"><button class="btn btn-primary" data-action="cancel">Cerrar</button></div>
+  `);
+  document.querySelector('[data-action="cancel"]').onclick = closeModal;
+}
+
 function renderTripleBalance() {
   const el = document.getElementById('tripleBalance');
   if (!el) return;
@@ -2680,14 +2785,21 @@ function renderTripleBalance() {
   const libretaCls = libreta >= 0 ? 'info' : 'negative';
   const realCls = real >= 0 ? 'positive' : 'negative';
 
+  // La barra anual (tu presupuesto) frente a lo que dice el banco. La diferencia es
+  // exactamente el trabajo de depuración que queda en los conceptos de este mes.
+  const presupuesto = calcMonthEndBalance(currentMonthIdx);
+  const depurar = presupuesto - real;
+
   // Determinar en qué modo estamos y mostrar el subtítulo adecuado
   const cargosProxMes = currentMonthIdx < 11 ? calcCardConsolidationsInMonth(currentMonthIdx + 1) : 0;
   const modoCargoReal = cargosProxMes > 0;
 
   let pendingSub;
   if (modoCargoReal) {
+    // Incluye las colas: lo comprado a final de mes que viaja en el extracto siguiente
+    // y se cobra dos meses después. Por eso puede ser mayor que el cargo del día 1.
     const nextMonthName = MONTHS[currentMonthIdx + 1];
-    pendingSub = `cargos TARJ.CRDTO del 1 de ${nextMonthName} (exacto)`;
+    pendingSub = `comprado y aún no cobrado (cargo del 1 de ${nextMonthName} + colas)`;
   } else {
     const compras = calcCardSpendInMonth(currentMonthIdx);
     const traspasos = calcInternalTransfersInMonth(currentMonthIdx);
@@ -2712,7 +2824,17 @@ function renderTripleBalance() {
       <div class="tb-value ${realCls}">${fmt(real)}</div>
       <div class="tb-sub">libreta − pendiente tarjetas</div>
     </div>
+    <div class="tb-card depurar" id="tbDepurar" style="cursor:pointer;" title="La barra anual es TU presupuesto: arranque + ingresos − gastos anotados.&#10;El real disponible es lo que dice el banco.&#10;Esta diferencia es lo que falta por depurar en los conceptos de este mes:&#10;gastos que no anotaste, importes que cambiaron, o ingresos de más.&#10;Cuando llegue a 0, el mes está cuadrado con la realidad.">
+      <div class="tb-label">🔧 Por depurar</div>
+      <div class="tb-value ${Math.abs(depurar) < 1 ? 'positive' : 'warn'}">${depurar >= 0 ? '+' : '−'}${fmt(Math.abs(depurar))}</div>
+      <div class="tb-sub">${Math.abs(depurar) < 1
+        ? 'el presupuesto cuadra con el banco'
+        : `presupuesto ${fmt(presupuesto)} − real ${fmt(real)}`}</div>
+      <div style="font-size:0.7rem; color:var(--accent); margin-top:3px;">pulsa para ver de dónde sale ▸</div>
+    </div>
   `;
+  const btnDep = document.getElementById('tbDepurar');
+  if (btnDep) btnDep.onclick = () => showDesviacionModal(currentMonthIdx);
 }
 
 // Panel de verificación de tarjetas: compara compras del mes vs TARJ.CRDTO del mes siguiente
